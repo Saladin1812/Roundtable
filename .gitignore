@@ -1,0 +1,50 @@
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
+CTestTestfile.cmake
+Makefile
+install_manifest.txt
+compile_commands.json
+
+# Common out-of-source build directories
+/out/
+/build/
+/bin/
+/lib/
+/cmake-build-*/
+
+# Generated dependency trees (e.g. FetchContent)
+_deps/
+
+# Build outputs
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Debug symbols / profiler output
+*.dSYM/
+*.pdb
+*.profraw
+*.profdata
+
+# Editor and local tool state
+.cache/
+.codex
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
