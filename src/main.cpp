@@ -1,6 +1,8 @@
+#include <cstdint>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
+#include <ftxui/component/event.hpp>
 
 enum class eFocusPane : std::uint8_t {
     LOCALS,
@@ -43,12 +45,12 @@ int main() {
                       }) |
             border | flex;
 
-        auto watches = vbox({
-                           watch_list_title,
-                           separator(),
-                           text("a"),
-                           text("ptr"),
-                       }) |
+        auto watch_list = vbox({
+                              watch_list_title,
+                              separator(),
+                              text("a"),
+                              text("ptr"),
+                          }) |
             border | size(WIDTH, EQUAL, 24);
 
         auto status = hbox({
@@ -62,7 +64,7 @@ int main() {
             hbox({
                 locals,
                 memory,
-                watches,
+                watch_list,
             }) | flex,
             status,
         });
