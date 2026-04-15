@@ -1,4 +1,3 @@
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <ftxui/component/component.hpp>
@@ -6,6 +5,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/event.hpp>
 #include <string>
+#include <vector>
 
 enum class eFocusPane : std::uint8_t {
     LOCALS,
@@ -13,84 +13,87 @@ enum class eFocusPane : std::uint8_t {
     WATCH_LIST,
 };
 
+struct SSelectablePaneState {
+    std::string              title;
+    std::vector<std::string> rows;
+    std::size_t              selected_index = 0;
+};
+
+static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused) {
+    using namespace ftxui;
+    Elements rows;
+    Element  title = text(pane.title) | bold;
+    if (is_focused) {
+        rows.push_back(title | inverted);
+    } else {
+        rows.push_back(title);
+    }
+    rows.push_back(separator());
+
+    for (std::size_t i = 0; i < pane.rows.size(); ++i) {
+
+        Element data_row = text(pane.rows[i]);
+        if (is_focused && pane.selected_index == i) {
+            rows.push_back(data_row | inverted);
+        } else {
+            rows.push_back(data_row);
+        }
+    }
+
+    return vbox(rows) | border;
+}
+
 int main() {
     using namespace ftxui;
 
-    auto                             screen                    = ScreenInteractive::Fullscreen();
-    eFocusPane                       focused_pane              = eFocusPane::MEMORY_VIEW;
-    std::size_t                      selected_locals_index     = 0;
-    std::size_t                      selected_watch_list_index = 0;
-    const std::array<std::string, 2> locals_mock_data          = {"a : int", "b : int"};
-    const std::array<std::string, 2> watch_list_mock_data      = {"a", "ptr"};
+    auto                 screen       = ScreenInteractive::Fullscreen();
+    eFocusPane           focused_pane = eFocusPane::MEMORY_VIEW;
 
-    auto                             renderer = Renderer([&] {
-        auto locals_title = text(" Locals ") | bold;
-        if (focused_pane == eFocusPane::LOCALS) {
-            locals_title = locals_title | inverted;
-        }
+    SSelectablePaneState locals_pane = {
+        .title          = " Locals ",
+        .rows           = {"a : int", "b : int"},
+        .selected_index = 0,
+    };
+    SSelectablePaneState memory_view_pane = {
+        .title = " Memory View ",
+        .rows =
+            {
+                "0x1000  48 65 6C 6C 6F 20 57 6F  Hello Wo",
+                "0x1008  72 6C 64 21 00 41 42 43  rld!.ABC",
+                "0x1010  DE AD BE EF 10 20 30 40  .... 0@",
+                "0x1018  01 02 03 04 05 06 07 08  ........",
+                "0x1020  FF EE DD CC BB AA 99 88  ........",
+            },
+        .selected_index = 0,
+    };
+    SSelectablePaneState watch_list_pane = {
+        .title          = " Watch List ",
+        .rows           = {"a", "ptr"},
+        .selected_index = 0,
+    };
 
-        auto memory_view_title = text(" Memory View ") | bold;
-        if (focused_pane == eFocusPane::MEMORY_VIEW) {
-            memory_view_title = memory_view_title | inverted;
-        }
-        auto watch_list_title = text(" Watch List ") | bold;
-        if (focused_pane == eFocusPane::WATCH_LIST) {
-            watch_list_title = watch_list_title | inverted;
-        }
-        Elements locals_elements = {
-            locals_title,
-            separator(),
-        };
-        for (std::size_t i = 0; i < locals_mock_data.size(); i++) {
-            auto row = text(locals_mock_data[i]);
-
-            if (focused_pane == eFocusPane::LOCALS && i == selected_locals_index) {
-                row = row | inverted;
-            }
-
-            locals_elements.push_back(row);
-        }
-        Elements watch_list_elements = {
-            watch_list_title,
-            separator(),
-        };
-        for (std::size_t i = 0; i < watch_list_mock_data.size(); i++) {
-            auto row = text(watch_list_mock_data[i]);
-
-            if (focused_pane == eFocusPane::WATCH_LIST && i == selected_watch_list_index) {
-                row = row | inverted;
-            }
-
-            watch_list_elements.push_back(row);
-        }
-        auto locals = vbox(locals_elements) | border | size(WIDTH, EQUAL, 24);
-
-        auto memory = vbox({
-                          memory_view_title,
-                          separator(),
-                          text("Memory pane coming next"),
-                      }) |
-            border | flex;
-
-        auto watch_list = vbox(watch_list_elements) | border | size(WIDTH, EQUAL, 24);
-        auto status     = hbox({
-                          text(" Roundtable ") | inverted,
-                          separator(),
-                          text(" Press q to quit "),
-                      }) |
+    auto renderer = Renderer([&] {
+        Element locals      = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS);
+        Element memory_view = renderSelectablePane(memory_view_pane, focused_pane == eFocusPane::MEMORY_VIEW);
+        Element watch_list  = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST);
+        Element status      = hbox({
+                             text(" Roundtable ") | inverted,
+                             separator(),
+                             text(" Press q to quit "),
+                         }) |
             border;
 
         return vbox({
             hbox({
-                locals,
-                memory,
-                watch_list,
+                locals | size(WIDTH, EQUAL, 24),
+                memory_view | flex,
+                watch_list | size(WIDTH, EQUAL, 24),
             }) | flex,
             status,
         });
     });
 
-    auto                             component = CatchEvent(renderer, [&](Event event) {
+    auto component = CatchEvent(renderer, [&](Event event) {
         if (event == Event::Character('q')) {
             screen.Exit();
             return true;
@@ -107,33 +110,46 @@ int main() {
 
         if (focused_pane == eFocusPane::LOCALS) {
             if (event == Event::ArrowUp || event == Event::Character('k')) {
-                if (selected_locals_index > 0) {
-                    --selected_locals_index;
+                if (locals_pane.selected_index > 0) {
+                    --locals_pane.selected_index;
                 }
                 return true;
             }
             if (event == Event::ArrowDown || event == Event::Character('j')) {
-                if (selected_locals_index + 1 < locals_mock_data.size()) {
-                    ++selected_locals_index;
+                if (locals_pane.selected_index + 1 < locals_pane.rows.size()) {
+                    ++locals_pane.selected_index;
                 }
                 return true;
             }
         }
         if (focused_pane == eFocusPane::WATCH_LIST) {
             if (event == Event::ArrowUp || event == Event::Character('k')) {
-                if (selected_watch_list_index > 0) {
-                    --selected_watch_list_index;
+                if (watch_list_pane.selected_index > 0) {
+                    --watch_list_pane.selected_index;
                 }
                 return true;
             }
             if (event == Event::ArrowDown || event == Event::Character('j')) {
-                if (selected_watch_list_index + 1 < watch_list_mock_data.size()) {
-                    ++selected_watch_list_index;
+                if (watch_list_pane.selected_index + 1 < watch_list_pane.rows.size()) {
+                    ++watch_list_pane.selected_index;
                 }
                 return true;
             }
         }
-
+        if (focused_pane == eFocusPane::MEMORY_VIEW) {
+            if (event == Event::ArrowUp || event == Event::Character('k')) {
+                if (memory_view_pane.selected_index > 0) {
+                    --memory_view_pane.selected_index;
+                }
+                return true;
+            }
+            if (event == Event::ArrowDown || event == Event::Character('j')) {
+                if (memory_view_pane.selected_index + 1 < memory_view_pane.rows.size()) {
+                    ++memory_view_pane.selected_index;
+                }
+                return true;
+            }
+        }
         return false;
     });
 
