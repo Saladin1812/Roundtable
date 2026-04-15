@@ -16,12 +16,14 @@ enum class eFocusPane : std::uint8_t {
 int main() {
     using namespace ftxui;
 
-    auto                       screen                = ScreenInteractive::Fullscreen();
-    eFocusPane                 focused_pane          = eFocusPane::MEMORY_VIEW;
-    std::size_t                selected_locals_index = 0;
-    std::array<std::string, 2> locals_mock_data      = {"a : int", "b : int"};
+    auto                             screen                    = ScreenInteractive::Fullscreen();
+    eFocusPane                       focused_pane              = eFocusPane::MEMORY_VIEW;
+    std::size_t                      selected_locals_index     = 0;
+    std::size_t                      selected_watch_list_index = 0;
+    const std::array<std::string, 2> locals_mock_data          = {"a : int", "b : int"};
+    const std::array<std::string, 2> watch_list_mock_data      = {"a", "ptr"};
 
-    auto                       renderer = Renderer([&] {
+    auto                             renderer = Renderer([&] {
         auto locals_title = text(" Locals ") | bold;
         if (focused_pane == eFocusPane::LOCALS) {
             locals_title = locals_title | inverted;
@@ -48,6 +50,19 @@ int main() {
 
             locals_elements.push_back(row);
         }
+        Elements watch_list_elements = {
+            watch_list_title,
+            separator(),
+        };
+        for (std::size_t i = 0; i < watch_list_mock_data.size(); i++) {
+            auto row = text(watch_list_mock_data[i]);
+
+            if (focused_pane == eFocusPane::WATCH_LIST && i == selected_watch_list_index) {
+                row = row | inverted;
+            }
+
+            watch_list_elements.push_back(row);
+        }
         auto locals = vbox(locals_elements) | border | size(WIDTH, EQUAL, 24);
 
         auto memory = vbox({
@@ -57,15 +72,8 @@ int main() {
                       }) |
             border | flex;
 
-        auto watch_list = vbox({
-                              watch_list_title,
-                              separator(),
-                              text("a"),
-                              text("ptr"),
-                          }) |
-            border | size(WIDTH, EQUAL, 24);
-
-        auto status = hbox({
+        auto watch_list = vbox(watch_list_elements) | border | size(WIDTH, EQUAL, 24);
+        auto status     = hbox({
                           text(" Roundtable ") | inverted,
                           separator(),
                           text(" Press q to quit "),
@@ -82,7 +90,7 @@ int main() {
         });
     });
 
-    auto                       component = CatchEvent(renderer, [&](Event event) {
+    auto                             component = CatchEvent(renderer, [&](Event event) {
         if (event == Event::Character('q')) {
             screen.Exit();
             return true;
@@ -100,15 +108,29 @@ int main() {
         if (focused_pane == eFocusPane::LOCALS) {
             if (event == Event::ArrowUp || event == Event::Character('k')) {
                 if (selected_locals_index > 0) {
-                    selected_locals_index--;
-                    return true;
+                    --selected_locals_index;
                 }
+                return true;
             }
             if (event == Event::ArrowDown || event == Event::Character('j')) {
                 if (selected_locals_index + 1 < locals_mock_data.size()) {
-                    selected_locals_index++;
-                    return true;
+                    ++selected_locals_index;
                 }
+                return true;
+            }
+        }
+        if (focused_pane == eFocusPane::WATCH_LIST) {
+            if (event == Event::ArrowUp || event == Event::Character('k')) {
+                if (selected_watch_list_index > 0) {
+                    --selected_watch_list_index;
+                }
+                return true;
+            }
+            if (event == Event::ArrowDown || event == Event::Character('j')) {
+                if (selected_watch_list_index + 1 < watch_list_mock_data.size()) {
+                    ++selected_watch_list_index;
+                }
+                return true;
             }
         }
 
