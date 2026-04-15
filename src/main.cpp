@@ -24,10 +24,9 @@ static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, boo
     Elements rows;
     Element  title = text(pane.title) | bold;
     if (is_focused) {
-        rows.push_back(title | inverted);
-    } else {
-        rows.push_back(title);
+        title = title | inverted;
     }
+    rows.push_back(title);
     rows.push_back(separator());
 
     for (std::size_t i = 0; i < pane.rows.size(); ++i) {
@@ -41,6 +40,23 @@ static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, boo
     }
 
     return vbox(rows) | border;
+}
+static bool handleVerticalNavigation(ftxui::Event event, SSelectablePaneState& pane) {
+    if (event == ftxui::Event::ArrowUp || event == ftxui::Event::Character('k')) {
+        if (pane.selected_index > 0) {
+            --pane.selected_index;
+        }
+        return true;
+    }
+
+    if (event == ftxui::Event::ArrowDown || event == ftxui::Event::Character('j')) {
+        if (pane.selected_index + 1 < pane.rows.size()) {
+            ++pane.selected_index;
+        }
+        return true;
+    }
+
+    return false;
 }
 
 int main() {
@@ -109,46 +125,13 @@ int main() {
         }
 
         if (focused_pane == eFocusPane::LOCALS) {
-            if (event == Event::ArrowUp || event == Event::Character('k')) {
-                if (locals_pane.selected_index > 0) {
-                    --locals_pane.selected_index;
-                }
-                return true;
-            }
-            if (event == Event::ArrowDown || event == Event::Character('j')) {
-                if (locals_pane.selected_index + 1 < locals_pane.rows.size()) {
-                    ++locals_pane.selected_index;
-                }
-                return true;
-            }
+            return handleVerticalNavigation(event, locals_pane);
         }
         if (focused_pane == eFocusPane::WATCH_LIST) {
-            if (event == Event::ArrowUp || event == Event::Character('k')) {
-                if (watch_list_pane.selected_index > 0) {
-                    --watch_list_pane.selected_index;
-                }
-                return true;
-            }
-            if (event == Event::ArrowDown || event == Event::Character('j')) {
-                if (watch_list_pane.selected_index + 1 < watch_list_pane.rows.size()) {
-                    ++watch_list_pane.selected_index;
-                }
-                return true;
-            }
+            return handleVerticalNavigation(event, watch_list_pane);
         }
         if (focused_pane == eFocusPane::MEMORY_VIEW) {
-            if (event == Event::ArrowUp || event == Event::Character('k')) {
-                if (memory_view_pane.selected_index > 0) {
-                    --memory_view_pane.selected_index;
-                }
-                return true;
-            }
-            if (event == Event::ArrowDown || event == Event::Character('j')) {
-                if (memory_view_pane.selected_index + 1 < memory_view_pane.rows.size()) {
-                    ++memory_view_pane.selected_index;
-                }
-                return true;
-            }
+            return handleVerticalNavigation(event, memory_view_pane);
         }
         return false;
     });
