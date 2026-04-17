@@ -6,6 +6,7 @@
 #include "debug_session.hpp"
 #include "memory_view.hpp"
 #include "pane_state.hpp"
+#include "pane_rows.hpp"
 
 static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused) {
     using namespace ftxui;
@@ -39,7 +40,7 @@ int main() {
 
     SSelectablePaneState locals_pane = {
         .title = " Locals ",
-        .rows  = {"a : int", "b : int"},
+        .rows  = formatLocalsPaneRows(debug_session.getLocals(debug_selection)),
     };
     SSelectablePaneState memory_view_pane = {
         .title = " Memory View ",
@@ -52,7 +53,11 @@ int main() {
     };
     SSelectablePaneState watch_list_pane = {
         .title = " Watch List ",
-        .rows  = {"a", "ptr"},
+        .rows  = formatWatchListPaneRows(debug_session.evaluateWatches(debug_selection,
+                                                                       {
+                                                                          {.expression = "a"},
+                                                                          {.expression = "ptr"},
+                                                                      })),
     };
 
     auto renderer = Renderer([&] {
