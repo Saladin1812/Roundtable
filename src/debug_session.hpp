@@ -18,16 +18,38 @@ struct SDebugCapabilities {
     bool supports_data_breakpoints  = false;
 };
 
+struct SWatchExpression {
+    std::string expression;
+};
+
+struct SWatchResult {
+    std::string expression;
+    std::string value;
+    std::string type;
+    std::string error_message;
+};
+
+struct SDisassemblyInstruction {
+    std::uint64_t address = 0;
+    std::string   mnemonic;
+    std::string   operands;
+    std::string   comment;
+};
+
 class IDebugSession {
   public:
     virtual ~IDebugSession() = default;
 
-    virtual SDebugCapabilities getCapabilities() const                                                               = 0;
-    virtual SMemoryReadResult  readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const = 0;
+    virtual SDebugCapabilities                   getCapabilities() const                                                                                         = 0;
+    virtual SMemoryReadResult                    readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const                           = 0;
+    virtual std::vector<SWatchResult>            evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) const = 0;
+    virtual std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) const = 0;
 };
 
 class CMockDebugSession : public IDebugSession {
   public:
-    SDebugCapabilities getCapabilities() const override;
-    SMemoryReadResult  readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const override;
+    SDebugCapabilities                   getCapabilities() const override;
+    SMemoryReadResult                    readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const override;
+    std::vector<SWatchResult>            evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) const override;
+    std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) const override;
 };
