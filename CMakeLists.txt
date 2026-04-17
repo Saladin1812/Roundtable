@@ -63,6 +63,8 @@ if(BUILD_TESTING)
 
   add_executable(roundtable_tests
     tests/pane_state_tests.cpp
+    tests/memory_view_tests.cpp
+    src/memory_view.cpp
     src/pane_state.cpp
   )
 

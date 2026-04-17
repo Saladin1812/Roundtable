@@ -18,5 +18,5 @@ struct SSelectablePaneState {
     std::size_t              selected_index = 0;
 };
 
-bool handleVerticalNavigation(ftxui::Event event, SSelectablePaneState& pane);
+bool       handleVerticalNavigation(ftxui::Event event, SSelectablePaneState& pane);
 eFocusPane advanceFocusPane(eFocusPane focused_pane);

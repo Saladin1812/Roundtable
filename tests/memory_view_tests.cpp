@@ -1,0 +1,43 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "memory_view.hpp"
+
+TEST_CASE("generateMemoryViewRows formats bytes into memory rows") {
+    const std::vector<std::uint8_t> memory_bytes = {
+        0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21, 0x00, 0x41, 0x42, 0x43, 0xDE, 0xAD, 0xBE, 0xEF,
+        0x10, 0x20, 0x30, 0x40, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, 0x99, 0x88,
+    };
+
+    const std::vector<std::string> rows = generateMemoryViewRows(0x1000, memory_bytes);
+
+    REQUIRE(rows.size() == 5);
+    CHECK(rows[0] == "0x1000  48 65 6C 6C 6F 20 57 6F  Hello Wo");
+    CHECK(rows[1] == "0x1008  72 6C 64 21 00 41 42 43  rld!.ABC");
+    CHECK(rows[2] == "0x1010  DE AD BE EF 10 20 30 40  ..... 0@");
+    CHECK(rows[3] == "0x1018  01 02 03 04 05 06 07 08  ........");
+    CHECK(rows[4] == "0x1020  FF EE DD CC BB AA 99 88  ........");
+}
+
+TEST_CASE("generateMemoryViewRows supports a partial trailing row") {
+    const std::vector<std::uint8_t> memory_bytes = {
+        0x41, 0x42, 0x43, 0x00, 0x44,
+    };
+
+    const std::vector<std::string> rows = generateMemoryViewRows(0x2000, memory_bytes, 4);
+
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0] == "0x2000  41 42 43 00  ABC.");
+    CHECK(rows[1] == "0x2004  44  D");
+}
+
+TEST_CASE("generateMemoryViewRows returns no rows when bytes_per_row is zero") {
+    const std::vector<std::uint8_t> memory_bytes = {0x41, 0x42};
+
+    const std::vector<std::string>  rows = generateMemoryViewRows(0x3000, memory_bytes, 0);
+
+    CHECK(rows.empty());
+}

@@ -3,6 +3,7 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
+#include "memory_view.hpp"
 #include "pane_state.hpp"
 
 static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused) {
@@ -39,14 +40,11 @@ int main() {
     };
     SSelectablePaneState memory_view_pane = {
         .title = " Memory View ",
-        .rows =
-            {
-                "0x1000  48 65 6C 6C 6F 20 57 6F  Hello Wo",
-                "0x1008  72 6C 64 21 00 41 42 43  rld!.ABC",
-                "0x1010  DE AD BE EF 10 20 30 40  .... 0@",
-                "0x1018  01 02 03 04 05 06 07 08  ........",
-                "0x1020  FF EE DD CC BB AA 99 88  ........",
-            },
+        .rows  = generateMemoryViewRows(0x1000,
+                                        {
+                                           0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21, 0x00, 0x41, 0x42, 0x43, 0xDE, 0xAD, 0xBE, 0xEF,
+                                           0x10, 0x20, 0x30, 0x40, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, 0x99, 0x88,
+                                       }),
     };
     SSelectablePaneState watch_list_pane = {
         .title = " Watch List ",
