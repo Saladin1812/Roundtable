@@ -1,23 +1,9 @@
-#include <cstddef>
-#include <cstdint>
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/event.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
-#include <ftxui/component/event.hpp>
-#include <string>
-#include <vector>
 
-enum class eFocusPane : std::uint8_t {
-    LOCALS,
-    MEMORY_VIEW,
-    WATCH_LIST,
-};
-
-struct SSelectablePaneState {
-    std::string              title;
-    std::vector<std::string> rows;
-    std::size_t              selected_index = 0;
-};
+#include "pane_state.hpp"
 
 static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused) {
     using namespace ftxui;
@@ -41,24 +27,6 @@ static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, boo
 
     return vbox(rows) | border;
 }
-static bool handleVerticalNavigation(ftxui::Event event, SSelectablePaneState& pane) {
-    if (event == ftxui::Event::ArrowUp || event == ftxui::Event::Character('k')) {
-        if (pane.selected_index > 0) {
-            --pane.selected_index;
-        }
-        return true;
-    }
-
-    if (event == ftxui::Event::ArrowDown || event == ftxui::Event::Character('j')) {
-        if (pane.selected_index + 1 < pane.rows.size()) {
-            ++pane.selected_index;
-        }
-        return true;
-    }
-
-    return false;
-}
-
 int main() {
     using namespace ftxui;
 
@@ -113,11 +81,7 @@ int main() {
         }
 
         if (event == Event::Tab) {
-            switch (focused_pane) {
-                case eFocusPane::MEMORY_VIEW: focused_pane = eFocusPane::WATCH_LIST; break;
-                case eFocusPane::WATCH_LIST: focused_pane = eFocusPane::LOCALS; break;
-                case eFocusPane::LOCALS: focused_pane = eFocusPane::MEMORY_VIEW; break;
-            }
+            focused_pane = advanceFocusPane(focused_pane);
             return true;
         }
 

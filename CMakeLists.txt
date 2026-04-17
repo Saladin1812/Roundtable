@@ -9,6 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(USE_MOLD "Use the mold linker when supported" ON)
 
+include(CTest)
+
 add_compile_options(
   -Wall
   -Wextra
@@ -50,3 +52,29 @@ target_link_libraries(roundtable
   PRIVATE ftxui::dom
   PRIVATE ftxui::component
 )
+
+if(BUILD_TESTING)
+  FetchContent_Declare(Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2
+    GIT_TAG v3.8.1
+  )
+
+  FetchContent_MakeAvailable(Catch2)
+
+  add_executable(roundtable_tests
+    tests/pane_state_tests.cpp
+    src/pane_state.cpp
+  )
+
+  target_include_directories(roundtable_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+
+  target_link_libraries(roundtable_tests
+    PRIVATE Catch2::Catch2WithMain
+    PRIVATE ftxui::component
+  )
+
+  include(Catch)
+  catch_discover_tests(roundtable_tests)
+endif()
