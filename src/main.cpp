@@ -66,9 +66,8 @@ int main() {
     eFocusPane           focused_pane = eFocusPane::MEMORY_VIEW;
 
     SSelectablePaneState locals_pane = {
-        .title          = " Locals ",
-        .rows           = {"a : int", "b : int"},
-        .selected_index = 0,
+        .title = " Locals ",
+        .rows  = {"a : int", "b : int"},
     };
     SSelectablePaneState memory_view_pane = {
         .title = " Memory View ",
@@ -80,12 +79,10 @@ int main() {
                 "0x1018  01 02 03 04 05 06 07 08  ........",
                 "0x1020  FF EE DD CC BB AA 99 88  ........",
             },
-        .selected_index = 0,
     };
     SSelectablePaneState watch_list_pane = {
-        .title          = " Watch List ",
-        .rows           = {"a", "ptr"},
-        .selected_index = 0,
+        .title = " Watch List ",
+        .rows  = {"a", "ptr"},
     };
 
     auto renderer = Renderer([&] {
