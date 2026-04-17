@@ -51,13 +51,21 @@ class IDapTransport {
 
 class CStdioDapTransport : public IDapTransport {
   public:
+    CStdioDapTransport() = default;
+    ~CStdioDapTransport() override;
+
     bool connect(const SDapEndpointConfig& endpoint_config, std::string& error_message) override;
     bool sendMessage(const std::string& message, std::string& error_message) override;
     bool readMessage(std::string& message, std::string& error_message) override;
     bool isConnected() const override;
 
   private:
+    bool closeProcess(std::string& error_message);
+
     bool connected_ = false;
+    int  child_pid_ = -1;
+    int  read_fd_   = -1;
+    int  write_fd_  = -1;
 };
 
 class CDapDebugSession : public IDebugSession {

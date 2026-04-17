@@ -1,28 +1,188 @@
 #include "dap_session.hpp"
 
+#include <array>
+#include <cerrno>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+CStdioDapTransport::~CStdioDapTransport() {
+    std::string error_message;
+    closeProcess(error_message);
+}
 
 bool CStdioDapTransport::connect(const SDapEndpointConfig& endpoint_config, std::string& error_message) {
-    static_cast<void>(endpoint_config);
-    error_message = "DAP stdio transport is not implemented yet";
-    connected_    = false;
-    return false;
+    if (endpoint_config.transport_kind != eDapTransportKind::STDIO) {
+        error_message = "CStdioDapTransport only supports stdio endpoints";
+        return false;
+    }
+
+    if (endpoint_config.command.empty()) {
+        error_message = "DAP adapter command is empty";
+        return false;
+    }
+
+    std::string close_error;
+    closeProcess(close_error);
+
+    int stdin_pipe[2]  = {-1, -1};
+    int stdout_pipe[2] = {-1, -1};
+
+    if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0) {
+        error_message = "Failed to create stdio pipes";
+        if (stdin_pipe[0] != -1) {
+            close(stdin_pipe[0]);
+            close(stdin_pipe[1]);
+        }
+        if (stdout_pipe[0] != -1) {
+            close(stdout_pipe[0]);
+            close(stdout_pipe[1]);
+        }
+        return false;
+    }
+
+    const pid_t child_pid = fork();
+    if (child_pid < 0) {
+        error_message = "Failed to fork DAP adapter process";
+        close(stdin_pipe[0]);
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        return false;
+    }
+
+    if (child_pid == 0) {
+        dup2(stdin_pipe[0], STDIN_FILENO);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stdout_pipe[1], STDERR_FILENO);
+
+        close(stdin_pipe[0]);
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+
+        std::vector<char*> argv;
+        argv.reserve(endpoint_config.arguments.size() + 2);
+        argv.push_back(const_cast<char*>(endpoint_config.command.c_str()));
+        for (const auto& argument : endpoint_config.arguments) {
+            argv.push_back(const_cast<char*>(argument.c_str()));
+        }
+        argv.push_back(nullptr);
+
+        execvp(endpoint_config.command.c_str(), argv.data());
+        _exit(127);
+    }
+
+    close(stdin_pipe[0]);
+    close(stdout_pipe[1]);
+
+    child_pid_ = child_pid;
+    write_fd_  = stdin_pipe[1];
+    read_fd_   = stdout_pipe[0];
+    connected_ = true;
+    error_message.clear();
+    return true;
 }
 
 bool CStdioDapTransport::sendMessage(const std::string& message, std::string& error_message) {
-    static_cast<void>(message);
-    error_message = "DAP stdio transport is not implemented yet";
-    return false;
+    if (!connected_ || write_fd_ < 0) {
+        error_message = "DAP stdio transport is not connected";
+        return false;
+    }
+
+    const std::string framed_message = "Content-Length: " + std::to_string(message.size()) + "\r\n\r\n" + message;
+    std::size_t       written_total  = 0;
+
+    while (written_total < framed_message.size()) {
+        const auto written_now = write(write_fd_, framed_message.data() + written_total, framed_message.size() - written_total);
+        if (written_now <= 0) {
+            error_message = "Failed to write DAP message to adapter";
+            return false;
+        }
+        written_total += static_cast<std::size_t>(written_now);
+    }
+
+    error_message.clear();
+    return true;
 }
 
 bool CStdioDapTransport::readMessage(std::string& message, std::string& error_message) {
-    message.clear();
-    error_message = "DAP stdio transport is not implemented yet";
-    return false;
+    if (!connected_ || read_fd_ < 0) {
+        error_message = "DAP stdio transport is not connected";
+        return false;
+    }
+
+    std::string         header;
+    std::array<char, 1> byte_buffer = {};
+
+    while (header.find("\r\n\r\n") == std::string::npos) {
+        const auto read_now = read(read_fd_, byte_buffer.data(), byte_buffer.size());
+        if (read_now <= 0) {
+            error_message = "Failed to read DAP header from adapter";
+            return false;
+        }
+
+        header.append(byte_buffer.data(), static_cast<std::size_t>(read_now));
+    }
+
+    const auto content_length_prefix = header.find("Content-Length:");
+    if (content_length_prefix == std::string::npos) {
+        error_message = "DAP response did not include Content-Length header";
+        return false;
+    }
+
+    const auto        value_start = content_length_prefix + std::string("Content-Length:").size();
+    const auto        line_end    = header.find("\r\n", value_start);
+    const auto        body_start  = header.find("\r\n\r\n") + 4;
+
+    const std::size_t content_length = static_cast<std::size_t>(std::stoul(header.substr(value_start, line_end - value_start)));
+
+    message = header.substr(body_start);
+    while (message.size() < content_length) {
+        std::array<char, 4096> chunk_buffer = {};
+        const auto             read_now     = read(read_fd_, chunk_buffer.data(), chunk_buffer.size());
+        if (read_now <= 0) {
+            error_message = "Failed to read DAP body from adapter";
+            return false;
+        }
+
+        message.append(chunk_buffer.data(), static_cast<std::size_t>(read_now));
+    }
+
+    message.resize(content_length);
+    error_message.clear();
+    return true;
 }
 
 bool CStdioDapTransport::isConnected() const {
     return connected_;
+}
+
+bool CStdioDapTransport::closeProcess(std::string& error_message) {
+    if (write_fd_ >= 0) {
+        close(write_fd_);
+        write_fd_ = -1;
+    }
+
+    if (read_fd_ >= 0) {
+        close(read_fd_);
+        read_fd_ = -1;
+    }
+
+    if (child_pid_ > 0) {
+        kill(child_pid_, SIGTERM);
+        int wait_status = 0;
+        waitpid(child_pid_, &wait_status, 0);
+        child_pid_ = -1;
+    }
+
+    connected_ = false;
+    error_message.clear();
+    return true;
 }
 
 CDapDebugSession::CDapDebugSession(std::unique_ptr<IDapTransport> transport, SDapEndpointConfig endpoint_config) :
@@ -39,7 +199,8 @@ SDebugCapabilities CDapDebugSession::mapCapabilities(const SDapAdapterCapabiliti
 }
 
 std::string CDapDebugSession::buildInitializeRequestMessage(const SDapInitializeRequest& initialize_request) {
-    return "{\"command\":\"initialize\",\"arguments\":{\"clientID\":\"" + initialize_request.client_id + "\",\"clientName\":\"" + initialize_request.client_name + "\"}}";
+    return R"({"seq":1,"type":"request","command":"initialize","arguments":{"clientID":")" + initialize_request.client_id + R"(","clientName":")" + initialize_request.client_name +
+        R"(","adapterID":"codelldb","linesStartAt1":true,"columnsStartAt1":true,"pathFormat":"path"}})";
 }
 
 SDapInitializeResponse CDapDebugSession::parseInitializeResponseMessage(const std::string& response_message) {

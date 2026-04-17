@@ -49,10 +49,24 @@ file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
+list(REMOVE_ITEM SOURCE_FILES
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/dap_probe_main.cpp"
+)
+
 add_executable(roundtable  ${SOURCE_FILES}
 )
 
+add_executable(roundtable_dap_probe
+  src/dap_probe_main.cpp
+  src/dap_session.cpp
+  src/debug_session.cpp
+  src/memory_view.cpp
+)
+
 target_include_directories(roundtable PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_include_directories(roundtable_dap_probe PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 include(FetchContent)
@@ -68,6 +82,9 @@ target_link_libraries(roundtable
   PRIVATE ftxui::screen
   PRIVATE ftxui::dom
   PRIVATE ftxui::component
+)
+
+target_link_libraries(roundtable_dap_probe
 )
 
 if(BUILD_TESTING)
