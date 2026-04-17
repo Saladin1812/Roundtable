@@ -584,12 +584,12 @@ SDapThreadsResponse CDapDebugSession::parseThreadsResponseMessage(const std::str
         SDapThread thread = {};
         thread.id         = std::stoi(response_message.substr(id_value_start, id_value_end - id_value_start));
 
-        const auto name_position = response_message.find("\"name\":\"", id_value_end);
+        const auto name_position = response_message.find(R"("name":")", id_value_end);
         if (name_position != std::string::npos) {
-            const auto name_value_start = name_position + std::string("\"name\":\"").size();
+            const auto name_value_start = name_position + std::string(R"("name":")").size();
             const auto name_value_end   = response_message.find('"', name_value_start);
             if (name_value_end != std::string::npos) {
-                thread.name = response_message.substr(name_value_start, name_value_end - name_value_start);
+                thread.name     = response_message.substr(name_value_start, name_value_end - name_value_start);
                 search_position = name_value_end;
             } else {
                 search_position = id_value_end;
@@ -771,14 +771,11 @@ bool CDapDebugSession::configurationDone() {
         return false;
     }
 
-    std::string error_message;
-    const auto  request_message = buildConfigurationDoneRequestMessage(next_sequence_number_++);
-
-    if (!transport_->sendMessage(request_message, error_message)) {
-        last_error_ = error_message;
+    if (!sendConfigurationDoneRequest()) {
         return false;
     }
 
+    std::string error_message;
     while (true) {
         std::string response_message;
         if (!transport_->readMessage(response_message, error_message)) {
@@ -806,6 +803,24 @@ bool CDapDebugSession::configurationDone() {
             return true;
         }
     }
+}
+
+bool CDapDebugSession::sendConfigurationDoneRequest() {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildConfigurationDoneRequestMessage(next_sequence_number_++);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    last_error_.clear();
+    return true;
 }
 
 bool CDapDebugSession::waitForStoppedEvent() {

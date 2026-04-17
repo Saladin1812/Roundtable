@@ -53,7 +53,7 @@ struct SDapReadMemoryResponse {
 };
 
 struct SDapThread {
-    int         id   = 0;
+    int         id = 0;
     std::string name;
 };
 
@@ -151,6 +151,7 @@ class CDapDebugSession : public IDebugSession {
     bool                                 launch(const SDapLaunchRequest& launch_request);
     bool                                 attach(const SDapAttachRequest& attach_request);
     bool                                 configurationDone();
+    bool                                 sendConfigurationDoneRequest();
     bool                                 waitForStoppedEvent();
     SDapThreadsResponse                  getThreads();
     bool                                 isConnected() const;

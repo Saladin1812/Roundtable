@@ -64,8 +64,8 @@ int main(int argc, char** argv) {
     }
 
     std::cerr << "probe: configurationDone\n";
-    if (!dap_session.configurationDone()) {
-        std::cerr << "configurationDone failed: " << dap_session.getLastError() << '\n';
+    if (!dap_session.sendConfigurationDoneRequest()) {
+        std::cerr << "sendConfigurationDoneRequest failed: " << dap_session.getLastError() << '\n';
         return 5;
     }
 

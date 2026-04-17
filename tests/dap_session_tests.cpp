@@ -144,6 +144,7 @@ TEST_CASE("CDapDebugSession reports transport connection failures") {
                                      .arguments      = {},
                                      .host           = "127.0.0.1",
                                      .port           = 4711,
+                                     .auth_token     = "",
                                  });
 
     CHECK_FALSE(dap_session.connect());
@@ -274,8 +275,8 @@ TEST_CASE("CDapDebugSession builds a threads request message") {
 }
 
 TEST_CASE("CDapDebugSession parses a threads response message") {
-    const std::string      response_message = R"({"success":true,"body":{"threads":[{"id":1,"name":"main"},{"id":2,"name":"worker"}]}})";
-    const SDapThreadsResponse response = CDapDebugSession::parseThreadsResponseMessage(response_message);
+    const std::string         response_message = R"({"success":true,"body":{"threads":[{"id":1,"name":"main"},{"id":2,"name":"worker"}]}})";
+    const SDapThreadsResponse response         = CDapDebugSession::parseThreadsResponseMessage(response_message);
 
     REQUIRE(response.success);
     REQUIRE(response.threads.size() == 2);
@@ -356,6 +357,15 @@ TEST_CASE("CDapDebugSession completes configurationDone and sees a stopped event
     REQUIRE(dap_session.connect());
     REQUIRE(dap_session.configurationDone());
     REQUIRE(dap_session.waitForStoppedEvent());
+}
+
+TEST_CASE("CDapDebugSession sends configurationDone without waiting for later responses") {
+    auto             transport = std::make_unique<CStubDapTransport>(true);
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.sendConfigurationDoneRequest());
 }
 
 TEST_CASE("CDapDebugSession attaches after receiving initialized event") {
