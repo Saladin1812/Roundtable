@@ -266,6 +266,25 @@ TEST_CASE("CDapDebugSession parses a readMemory response message") {
     CHECK(response.memory_bytes[4] == 0x6F);
 }
 
+TEST_CASE("CDapDebugSession builds a threads request message") {
+    const std::string request_message = CDapDebugSession::buildThreadsRequestMessage(8);
+
+    CHECK(request_message.find("\"seq\":8") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"threads\"") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a threads response message") {
+    const std::string      response_message = R"({"success":true,"body":{"threads":[{"id":1,"name":"main"},{"id":2,"name":"worker"}]}})";
+    const SDapThreadsResponse response = CDapDebugSession::parseThreadsResponseMessage(response_message);
+
+    REQUIRE(response.success);
+    REQUIRE(response.threads.size() == 2);
+    CHECK(response.threads[0].id == 1);
+    CHECK(response.threads[0].name == "main");
+    CHECK(response.threads[1].id == 2);
+    CHECK(response.threads[1].name == "worker");
+}
+
 TEST_CASE("CDapDebugSession builds a launch request message") {
     const std::string request_message = CDapDebugSession::buildLaunchRequestMessage(9,
                                                                                     {
@@ -352,4 +371,22 @@ TEST_CASE("CDapDebugSession attaches after receiving initialized event") {
         .process_id    = 4242,
         .stop_on_entry = true,
     }));
+}
+
+TEST_CASE("CDapDebugSession returns threads from a threads response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"output","body":{"category":"console","output":"hello"}})",
+        R"({"type":"response","command":"threads","success":true,"body":{"threads":[{"id":1,"name":"main"}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto threads_response = dap_session.getThreads();
+
+    REQUIRE(threads_response.success);
+    REQUIRE(threads_response.threads.size() == 1);
+    CHECK(threads_response.threads[0].id == 1);
+    CHECK(threads_response.threads[0].name == "main");
 }

@@ -466,6 +466,10 @@ std::string CDapDebugSession::buildReadMemoryRequestMessage(int sequence_number,
         R"(","offset":)" + std::to_string(read_memory_request.offset) + ",\"count\":" + std::to_string(read_memory_request.count) + "}}";
 }
 
+std::string CDapDebugSession::buildThreadsRequestMessage(int sequence_number) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"threads","arguments":{}})";
+}
+
 namespace {
 
     std::optional<std::string> extractJsonStringField(const std::string& response_message, const std::string& field_name) {
@@ -554,6 +558,49 @@ SDapReadMemoryResponse CDapDebugSession::parseReadMemoryResponseMessage(const st
 
     response.success      = true;
     response.memory_bytes = decodeBase64(encoded_bytes.value());
+    return response;
+}
+
+SDapThreadsResponse CDapDebugSession::parseThreadsResponseMessage(const std::string& response_message) {
+    SDapThreadsResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP threads response did not report success";
+        return response;
+    }
+
+    response.success = true;
+
+    std::size_t search_position = 0;
+    while (true) {
+        const auto id_position = response_message.find("\"id\":", search_position);
+        if (id_position == std::string::npos) {
+            break;
+        }
+
+        const auto id_value_start = id_position + std::string("\"id\":").size();
+        const auto id_value_end   = response_message.find_first_not_of("0123456789", id_value_start);
+
+        SDapThread thread = {};
+        thread.id         = std::stoi(response_message.substr(id_value_start, id_value_end - id_value_start));
+
+        const auto name_position = response_message.find("\"name\":\"", id_value_end);
+        if (name_position != std::string::npos) {
+            const auto name_value_start = name_position + std::string("\"name\":\"").size();
+            const auto name_value_end   = response_message.find('"', name_value_start);
+            if (name_value_end != std::string::npos) {
+                thread.name = response_message.substr(name_value_start, name_value_end - name_value_start);
+                search_position = name_value_end;
+            } else {
+                search_position = id_value_end;
+            }
+        } else {
+            search_position = id_value_end;
+        }
+
+        response.threads.push_back(std::move(thread));
+    }
+
     return response;
 }
 
@@ -796,6 +843,49 @@ bool CDapDebugSession::waitForStoppedEvent() {
         if (message.type == "event" && message.event_name == "stopped") {
             last_error_.clear();
             return true;
+        }
+    }
+}
+
+SDapThreadsResponse CDapDebugSession::getThreads() {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .threads       = {},
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildThreadsRequestMessage(next_sequence_number_++);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .threads       = {},
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .threads       = {},
+                .error_message = error_message,
+            };
+        }
+
+        std::cerr << "dap threads message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "threads") {
+            return parseThreadsResponseMessage(response_message);
         }
     }
 }

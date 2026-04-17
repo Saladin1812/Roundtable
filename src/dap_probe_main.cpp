@@ -69,10 +69,17 @@ int main(int argc, char** argv) {
         return 5;
     }
 
-    std::cerr << "probe: waitForStoppedEvent\n";
-    if (!dap_session.waitForStoppedEvent()) {
-        std::cerr << "waitForStoppedEvent failed: " << dap_session.getLastError() << '\n';
+    std::cerr << "probe: getThreads\n";
+    const auto threads_response = dap_session.getThreads();
+    if (!threads_response.success) {
+        std::cerr << "getThreads failed: " << threads_response.error_message << '\n';
         return 6;
+    }
+
+    std::cout << "threads ok\n";
+    std::cout << "thread_count=" << threads_response.threads.size() << '\n';
+    for (const auto& thread : threads_response.threads) {
+        std::cout << "thread id=" << thread.id << " name=" << thread.name << '\n';
     }
 
     const auto capabilities = dap_session.getCapabilities();
@@ -83,6 +90,5 @@ int main(int argc, char** argv) {
     std::cout << "supports_disassembly=" << capabilities.supports_disassembly << '\n';
     std::cout << "supports_data_breakpoints=" << capabilities.supports_data_breakpoints << '\n';
     std::cout << (mode == "launch" ? "launch ok\n" : "attach ok\n");
-    std::cout << "stopped ok\n";
     return 0;
 }

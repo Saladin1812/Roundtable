@@ -52,6 +52,17 @@ struct SDapReadMemoryResponse {
     std::string               error_message;
 };
 
+struct SDapThread {
+    int         id   = 0;
+    std::string name;
+};
+
+struct SDapThreadsResponse {
+    bool                    success = false;
+    std::vector<SDapThread> threads;
+    std::string             error_message;
+};
+
 struct SDapLaunchRequest {
     std::string              program;
     std::vector<std::string> arguments;
@@ -128,6 +139,8 @@ class CDapDebugSession : public IDebugSession {
     static SDapInitializeResponse        parseInitializeResponseMessage(const std::string& response_message);
     static std::string                   buildReadMemoryRequestMessage(int sequence_number, const SDapReadMemoryRequest& read_memory_request);
     static SDapReadMemoryResponse        parseReadMemoryResponseMessage(const std::string& response_message);
+    static std::string                   buildThreadsRequestMessage(int sequence_number);
+    static SDapThreadsResponse           parseThreadsResponseMessage(const std::string& response_message);
     static std::string                   buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request);
     static std::string                   buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request);
     static std::string                   buildConfigurationDoneRequestMessage(int sequence_number);
@@ -139,6 +152,7 @@ class CDapDebugSession : public IDebugSession {
     bool                                 attach(const SDapAttachRequest& attach_request);
     bool                                 configurationDone();
     bool                                 waitForStoppedEvent();
+    SDapThreadsResponse                  getThreads();
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);
