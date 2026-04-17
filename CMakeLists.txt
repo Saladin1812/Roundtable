@@ -79,10 +79,12 @@ if(BUILD_TESTING)
   FetchContent_MakeAvailable(Catch2)
 
   add_executable(roundtable_tests
+    tests/dap_session_tests.cpp
     tests/debug_session_tests.cpp
     tests/pane_rows_tests.cpp
     tests/pane_state_tests.cpp
     tests/memory_view_tests.cpp
+    src/dap_session.cpp
     src/debug_session.cpp
     src/memory_view.cpp
     src/pane_rows.cpp
