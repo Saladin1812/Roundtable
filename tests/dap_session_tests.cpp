@@ -225,3 +225,31 @@ TEST_CASE("CDapDebugSession reports initialize parse failures") {
     CHECK_FALSE(dap_session.initialize());
     CHECK(dap_session.getLastError() == "DAP initialize response did not report success");
 }
+
+TEST_CASE("CDapDebugSession builds a readMemory request message") {
+    const std::string request_message = CDapDebugSession::buildReadMemoryRequestMessage(7,
+                                                                                        {
+                                                                                            .memory_reference = "0x1000",
+                                                                                            .offset           = 0,
+                                                                                            .count            = 16,
+                                                                                        });
+
+    CHECK(request_message.find("\"seq\":7") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"readMemory\"") != std::string::npos);
+    CHECK(request_message.find("\"memoryReference\":\"0x1000\"") != std::string::npos);
+    CHECK(request_message.find("\"count\":16") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a readMemory response message") {
+    const std::string            response_message = "{\"success\":true,\"body\":{\"address\":\"0x1000\",\"data\":\"SGVsbG8=\"}}";
+
+    const SDapReadMemoryResponse response = CDapDebugSession::parseReadMemoryResponseMessage(response_message);
+
+    REQUIRE(response.success);
+    REQUIRE(response.memory_bytes.size() == 5);
+    CHECK(response.memory_bytes[0] == 0x48);
+    CHECK(response.memory_bytes[1] == 0x65);
+    CHECK(response.memory_bytes[2] == 0x6C);
+    CHECK(response.memory_bytes[3] == 0x6C);
+    CHECK(response.memory_bytes[4] == 0x6F);
+}

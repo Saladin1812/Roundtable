@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <vector>
 
-SDebugCapabilities CMockDebugSession::getCapabilities() const {
+SDebugCapabilities CMockDebugSession::getCapabilities() {
     return {
         .supports_memory_read       = true,
         .supports_memory_write      = false,
@@ -13,7 +13,7 @@ SDebugCapabilities CMockDebugSession::getCapabilities() const {
     };
 }
 
-std::vector<SLocalVariable> CMockDebugSession::getLocals(const SDebugSelection& selection) const {
+std::vector<SLocalVariable> CMockDebugSession::getLocals(const SDebugSelection& selection) {
     static_cast<void>(selection);
 
     return {
@@ -30,7 +30,7 @@ std::vector<SLocalVariable> CMockDebugSession::getLocals(const SDebugSelection& 
     };
 }
 
-SMemoryReadResult CMockDebugSession::readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const {
+SMemoryReadResult CMockDebugSession::readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) {
     static_cast<void>(selection);
 
     static const std::vector<std::uint8_t> mock_memory_bytes = {
@@ -48,7 +48,7 @@ SMemoryReadResult CMockDebugSession::readMemory(const SDebugSelection& selection
     };
 }
 
-std::vector<SWatchResult> CMockDebugSession::evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) const {
+std::vector<SWatchResult> CMockDebugSession::evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) {
     static_cast<void>(selection);
 
     std::vector<SWatchResult> watch_results;
@@ -86,7 +86,7 @@ std::vector<SWatchResult> CMockDebugSession::evaluateWatches(const SDebugSelecti
     return watch_results;
 }
 
-std::vector<SDisassemblyInstruction> CMockDebugSession::disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) const {
+std::vector<SDisassemblyInstruction> CMockDebugSession::disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) {
     static_cast<void>(selection);
 
     static const std::vector<SDisassemblyInstruction> mock_instructions = {

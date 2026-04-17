@@ -39,6 +39,18 @@ struct SDapInitializeResponse {
     std::string             error_message;
 };
 
+struct SDapReadMemoryRequest {
+    std::string memory_reference;
+    std::size_t offset = 0;
+    std::size_t count  = 0;
+};
+
+struct SDapReadMemoryResponse {
+    bool                      success = false;
+    std::vector<std::uint8_t> memory_bytes;
+    std::string               error_message;
+};
+
 class IDapTransport {
   public:
     virtual ~IDapTransport() = default;
@@ -75,6 +87,8 @@ class CDapDebugSession : public IDebugSession {
     static SDebugCapabilities            mapCapabilities(const SDapAdapterCapabilities& adapter_capabilities);
     static std::string                   buildInitializeRequestMessage(const SDapInitializeRequest& initialize_request);
     static SDapInitializeResponse        parseInitializeResponseMessage(const std::string& response_message);
+    static std::string                   buildReadMemoryRequestMessage(int sequence_number, const SDapReadMemoryRequest& read_memory_request);
+    static SDapReadMemoryResponse        parseReadMemoryResponseMessage(const std::string& response_message);
 
     bool                                 connect();
     bool                                 initialize();
@@ -82,15 +96,16 @@ class CDapDebugSession : public IDebugSession {
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);
 
-    SDebugCapabilities                   getCapabilities() const override;
-    std::vector<SLocalVariable>          getLocals(const SDebugSelection& selection) const override;
-    SMemoryReadResult                    readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const override;
-    std::vector<SWatchResult>            evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) const override;
-    std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) const override;
+    SDebugCapabilities                   getCapabilities() override;
+    std::vector<SLocalVariable>          getLocals(const SDebugSelection& selection) override;
+    SMemoryReadResult                    readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) override;
+    std::vector<SWatchResult>            evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) override;
+    std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) override;
 
   private:
     std::unique_ptr<IDapTransport> transport_;
     SDapEndpointConfig             endpoint_config_;
     SDapAdapterCapabilities        adapter_capabilities_;
     std::string                    last_error_;
+    int                            next_sequence_number_ = 1;
 };

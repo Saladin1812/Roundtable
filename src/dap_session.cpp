@@ -1,10 +1,11 @@
 #include "dap_session.hpp"
 
 #include <array>
-#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -65,15 +66,28 @@ bool CStdioDapTransport::connect(const SDapEndpointConfig& endpoint_config, std:
         close(stdout_pipe[0]);
         close(stdout_pipe[1]);
 
-        std::vector<char*> argv;
-        argv.reserve(endpoint_config.arguments.size() + 2);
-        argv.push_back(const_cast<char*>(endpoint_config.command.c_str()));
+        std::vector<std::string> argument_strings;
+        argument_strings.reserve(endpoint_config.arguments.size() + 1);
+        argument_strings.push_back(endpoint_config.command);
         for (const auto& argument : endpoint_config.arguments) {
-            argv.push_back(const_cast<char*>(argument.c_str()));
+            argument_strings.push_back(argument);
+        }
+
+        std::vector<std::vector<char>> argument_buffers;
+        argument_buffers.reserve(argument_strings.size());
+        for (const auto& argument_string : argument_strings) {
+            argument_buffers.emplace_back(argument_string.begin(), argument_string.end());
+            argument_buffers.back().push_back('\0');
+        }
+
+        std::vector<char*> argv;
+        argv.reserve(argument_buffers.size() + 1);
+        for (auto& argument_buffer : argument_buffers) {
+            argv.push_back(argument_buffer.data());
         }
         argv.push_back(nullptr);
 
-        execvp(endpoint_config.command.c_str(), argv.data());
+        execvp(argv[0], argv.data());
         _exit(127);
     }
 
@@ -220,6 +234,102 @@ SDapInitializeResponse CDapDebugSession::parseInitializeResponseMessage(const st
     return response;
 }
 
+std::string CDapDebugSession::buildReadMemoryRequestMessage(int sequence_number, const SDapReadMemoryRequest& read_memory_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + ",\"type\":\"request\",\"command\":\"readMemory\",\"arguments\":{\"memoryReference\":\"" +
+        read_memory_request.memory_reference + "\",\"offset\":" + std::to_string(read_memory_request.offset) + ",\"count\":" + std::to_string(read_memory_request.count) + "}}";
+}
+
+namespace {
+
+    std::optional<std::string> extractJsonStringField(const std::string& response_message, const std::string& field_name) {
+        const auto field_pattern = "\"" + field_name + "\":\"";
+        const auto field_start   = response_message.find(field_pattern);
+        if (field_start == std::string::npos) {
+            return std::nullopt;
+        }
+
+        const auto value_start = field_start + field_pattern.size();
+        const auto value_end   = response_message.find('"', value_start);
+        if (value_end == std::string::npos) {
+            return std::nullopt;
+        }
+
+        return response_message.substr(value_start, value_end - value_start);
+    }
+
+    int decodeBase64Value(char character) {
+        if (character >= 'A' && character <= 'Z') {
+            return character - 'A';
+        }
+        if (character >= 'a' && character <= 'z') {
+            return character - 'a' + 26;
+        }
+        if (character >= '0' && character <= '9') {
+            return character - '0' + 52;
+        }
+        if (character == '+') {
+            return 62;
+        }
+        if (character == '/') {
+            return 63;
+        }
+        return -1;
+    }
+
+    std::vector<std::uint8_t> decodeBase64(const std::string& encoded_bytes) {
+        std::vector<std::uint8_t> decoded_bytes;
+        int                       buffer         = 0;
+        int                       bits_in_buffer = 0;
+
+        for (const char character : encoded_bytes) {
+            if (character == '=') {
+                break;
+            }
+
+            const int decoded_value = decodeBase64Value(character);
+            if (decoded_value < 0) {
+                continue;
+            }
+
+            buffer = (buffer << 6) | decoded_value;
+            bits_in_buffer += 6;
+
+            while (bits_in_buffer >= 8) {
+                bits_in_buffer -= 8;
+                decoded_bytes.push_back(static_cast<std::uint8_t>((buffer >> bits_in_buffer) & 0xFF));
+            }
+        }
+
+        return decoded_bytes;
+    }
+
+    std::string formatMemoryReference(std::uint64_t start_address) {
+        std::ostringstream address_stream;
+        address_stream << "0x" << std::hex << std::uppercase << start_address;
+        return address_stream.str();
+    }
+
+} // namespace
+
+SDapReadMemoryResponse CDapDebugSession::parseReadMemoryResponseMessage(const std::string& response_message) {
+    SDapReadMemoryResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP readMemory response did not report success";
+        return response;
+    }
+
+    const auto encoded_bytes = extractJsonStringField(response_message, "data");
+    if (!encoded_bytes.has_value()) {
+        response.error_message = "DAP readMemory response did not include data";
+        return response;
+    }
+
+    response.success      = true;
+    response.memory_bytes = decodeBase64(encoded_bytes.value());
+    return response;
+}
+
 bool CDapDebugSession::connect() {
     if (!transport_) {
         last_error_ = "DAP transport is not configured";
@@ -263,6 +373,7 @@ bool CDapDebugSession::initialize() {
     }
 
     adapter_capabilities_ = response.capabilities;
+    next_sequence_number_ = 2;
     last_error_.clear();
     return true;
 }
@@ -279,16 +390,16 @@ void CDapDebugSession::setAdapterCapabilities(const SDapAdapterCapabilities& ada
     adapter_capabilities_ = adapter_capabilities;
 }
 
-SDebugCapabilities CDapDebugSession::getCapabilities() const {
+SDebugCapabilities CDapDebugSession::getCapabilities() {
     return mapCapabilities(adapter_capabilities_);
 }
 
-std::vector<SLocalVariable> CDapDebugSession::getLocals(const SDebugSelection& selection) const {
+std::vector<SLocalVariable> CDapDebugSession::getLocals(const SDebugSelection& selection) {
     static_cast<void>(selection);
     return {};
 }
 
-SMemoryReadResult CDapDebugSession::readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const {
+SMemoryReadResult CDapDebugSession::readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) {
     static_cast<void>(selection);
 
     if (!isConnected()) {
@@ -300,15 +411,65 @@ SMemoryReadResult CDapDebugSession::readMemory(const SDebugSelection& selection,
         };
     }
 
+    if (!adapter_capabilities_.supports_read_memory) {
+        return {
+            .start_address = request.start_address,
+            .memory_bytes  = {},
+            .bytes_per_row = request.bytes_per_row,
+            .error_message = "DAP adapter does not support readMemory",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildReadMemoryRequestMessage(next_sequence_number_++,
+                                                                {
+                                                                    .memory_reference = formatMemoryReference(request.start_address),
+                                                                    .offset           = 0,
+                                                                    .count            = request.byte_count,
+                                                               });
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return {
+            .start_address = request.start_address,
+            .memory_bytes  = {},
+            .bytes_per_row = request.bytes_per_row,
+            .error_message = error_message,
+        };
+    }
+
+    std::string response_message;
+    if (!transport_->readMessage(response_message, error_message)) {
+        last_error_ = error_message;
+        return {
+            .start_address = request.start_address,
+            .memory_bytes  = {},
+            .bytes_per_row = request.bytes_per_row,
+            .error_message = error_message,
+        };
+    }
+
+    const auto response = parseReadMemoryResponseMessage(response_message);
+    if (!response.success) {
+        last_error_ = response.error_message;
+        return {
+            .start_address = request.start_address,
+            .memory_bytes  = {},
+            .bytes_per_row = request.bytes_per_row,
+            .error_message = response.error_message,
+        };
+    }
+
+    last_error_.clear();
     return {
         .start_address = request.start_address,
-        .memory_bytes  = {},
+        .memory_bytes  = response.memory_bytes,
         .bytes_per_row = request.bytes_per_row,
-        .error_message = "DAP readMemory is not implemented yet",
+        .error_message = "",
     };
 }
 
-std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) const {
+std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) {
     static_cast<void>(selection);
 
     std::vector<SWatchResult> watch_results;
@@ -328,7 +489,7 @@ std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelectio
     return watch_results;
 }
 
-std::vector<SDisassemblyInstruction> CDapDebugSession::disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) const {
+std::vector<SDisassemblyInstruction> CDapDebugSession::disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) {
     static_cast<void>(selection);
     static_cast<void>(start_address);
     static_cast<void>(instruction_count);

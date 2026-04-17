@@ -44,7 +44,7 @@ TEST_CASE("generateMemoryViewRows returns no rows when bytes_per_row is zero") {
 }
 
 TEST_CASE("mock memory provider returns requested byte count") {
-    const CMockDebugSession debug_session   = {};
+    CMockDebugSession       debug_session   = {};
     const SDebugSelection   debug_selection = {};
 
     const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
@@ -61,7 +61,7 @@ TEST_CASE("mock memory provider returns requested byte count") {
 }
 
 TEST_CASE("mock memory provider clamps requested byte count to available bytes") {
-    const CMockDebugSession debug_session   = {};
+    CMockDebugSession       debug_session   = {};
     const SDebugSelection   debug_selection = {};
 
     const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,

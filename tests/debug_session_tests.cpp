@@ -3,7 +3,7 @@
 #include "debug_session.hpp"
 
 TEST_CASE("mock debug session exposes memory read capability") {
-    const CMockDebugSession  debug_session = {};
+    CMockDebugSession        debug_session = {};
 
     const SDebugCapabilities capabilities = debug_session.getCapabilities();
 
@@ -15,10 +15,10 @@ TEST_CASE("mock debug session exposes memory read capability") {
 }
 
 TEST_CASE("mock debug session reads memory for the current selection") {
-    const CMockDebugSession debug_session   = {};
-    const SDebugSelection   debug_selection = {
-          .thread_id   = 1,
-          .frame_index = 0,
+    CMockDebugSession     debug_session   = {};
+    const SDebugSelection debug_selection = {
+        .thread_id   = 1,
+        .frame_index = 0,
     };
 
     const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
@@ -34,10 +34,10 @@ TEST_CASE("mock debug session reads memory for the current selection") {
 }
 
 TEST_CASE("mock debug session returns locals for the current selection") {
-    const CMockDebugSession debug_session   = {};
-    const SDebugSelection   debug_selection = {
-          .thread_id   = 1,
-          .frame_index = 0,
+    CMockDebugSession     debug_session   = {};
+    const SDebugSelection debug_selection = {
+        .thread_id   = 1,
+        .frame_index = 0,
     };
 
     const std::vector<SLocalVariable> locals = debug_session.getLocals(debug_selection);
@@ -52,7 +52,7 @@ TEST_CASE("mock debug session returns locals for the current selection") {
 }
 
 TEST_CASE("mock debug session evaluates watch expressions") {
-    const CMockDebugSession             debug_session     = {};
+    CMockDebugSession                   debug_session     = {};
     const SDebugSelection               debug_selection   = {};
     const std::vector<SWatchExpression> watch_expressions = {
         {.expression = "a"},
@@ -72,7 +72,7 @@ TEST_CASE("mock debug session evaluates watch expressions") {
 }
 
 TEST_CASE("mock debug session returns disassembly from a start address") {
-    const CMockDebugSession                    debug_session   = {};
+    CMockDebugSession                          debug_session   = {};
     const SDebugSelection                      debug_selection = {};
 
     const std::vector<SDisassemblyInstruction> instructions = debug_session.disassemble(debug_selection, 0x401001, 2);
