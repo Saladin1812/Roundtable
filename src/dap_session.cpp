@@ -325,10 +325,10 @@ bool CTcpDapTransport::connect(const SDapEndpointConfig& endpoint_config, std::s
         for (const auto& argument : endpoint_config.arguments) {
             argument_strings.push_back(argument);
         }
-        argument_strings.push_back("--port");
+        argument_strings.emplace_back("--port");
         argument_strings.push_back(std::to_string(bound_port));
         if (!endpoint_config.auth_token.empty()) {
-            argument_strings.push_back("--auth-token");
+            argument_strings.emplace_back("--auth-token");
             argument_strings.push_back(endpoint_config.auth_token);
         }
 
@@ -462,8 +462,8 @@ SDapInitializeResponse CDapDebugSession::parseInitializeResponseMessage(const st
 }
 
 std::string CDapDebugSession::buildReadMemoryRequestMessage(int sequence_number, const SDapReadMemoryRequest& read_memory_request) {
-    return "{\"seq\":" + std::to_string(sequence_number) + ",\"type\":\"request\",\"command\":\"readMemory\",\"arguments\":{\"memoryReference\":\"" +
-        read_memory_request.memory_reference + "\",\"offset\":" + std::to_string(read_memory_request.offset) + ",\"count\":" + std::to_string(read_memory_request.count) + "}}";
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"readMemory","arguments":{"memoryReference":")" + read_memory_request.memory_reference +
+        R"(","offset":)" + std::to_string(read_memory_request.offset) + ",\"count\":" + std::to_string(read_memory_request.count) + "}}";
 }
 
 namespace {
