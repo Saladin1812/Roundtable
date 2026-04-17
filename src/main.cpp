@@ -31,20 +31,21 @@ static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, boo
 int main() {
     using namespace ftxui;
 
-    auto                 screen       = ScreenInteractive::Fullscreen();
-    eFocusPane           focused_pane = eFocusPane::MEMORY_VIEW;
+    auto                    screen               = ScreenInteractive::Fullscreen();
+    eFocusPane              focused_pane         = eFocusPane::MEMORY_VIEW;
+    CMockMemoryDataProvider memory_data_provider = {};
 
-    SSelectablePaneState locals_pane = {
-        .title = " Locals ",
-        .rows  = {"a : int", "b : int"},
+    SSelectablePaneState    locals_pane = {
+           .title = " Locals ",
+           .rows  = {"a : int", "b : int"},
     };
     SSelectablePaneState memory_view_pane = {
         .title = " Memory View ",
-        .rows  = generateMemoryViewRows(0x1000,
-                                        {
-                                           0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21, 0x00, 0x41, 0x42, 0x43, 0xDE, 0xAD, 0xBE, 0xEF,
-                                           0x10, 0x20, 0x30, 0x40, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, 0x99, 0x88,
-                                       }),
+        .rows  = generateMemoryViewRows(memory_data_provider.readMemory({
+             .start_address = 0x1000,
+             .byte_count    = 40,
+             .bytes_per_row = 8,
+        })),
     };
     SSelectablePaneState watch_list_pane = {
         .title = " Watch List ",

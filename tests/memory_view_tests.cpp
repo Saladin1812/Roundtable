@@ -41,3 +41,44 @@ TEST_CASE("generateMemoryViewRows returns no rows when bytes_per_row is zero") {
 
     CHECK(rows.empty());
 }
+
+TEST_CASE("mock memory provider returns requested byte count") {
+    const CMockMemoryDataProvider memory_data_provider = {};
+
+    const SMemoryReadResult       memory_read_result = memory_data_provider.readMemory({
+              .start_address = 0x4000,
+              .byte_count    = 16,
+              .bytes_per_row = 8,
+    });
+
+    CHECK(memory_read_result.start_address == 0x4000);
+    CHECK(memory_read_result.bytes_per_row == 8);
+    CHECK(memory_read_result.memory_bytes.size() == 16);
+    CHECK(memory_read_result.error_message.empty());
+}
+
+TEST_CASE("mock memory provider clamps requested byte count to available bytes") {
+    const CMockMemoryDataProvider memory_data_provider = {};
+
+    const SMemoryReadResult       memory_read_result = memory_data_provider.readMemory({
+              .start_address = 0x5000,
+              .byte_count    = 64,
+              .bytes_per_row = 8,
+    });
+
+    CHECK(memory_read_result.memory_bytes.size() == 40);
+}
+
+TEST_CASE("generateMemoryViewRows returns provider error as a row") {
+    const SMemoryReadResult memory_read_result = {
+        .start_address = 0x6000,
+        .memory_bytes  = {},
+        .bytes_per_row = 8,
+        .error_message = "Failed to read memory",
+    };
+
+    const std::vector<std::string> rows = generateMemoryViewRows(memory_read_result);
+
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0] == "Failed to read memory");
+}
