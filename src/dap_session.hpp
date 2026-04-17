@@ -28,6 +28,17 @@ struct SDapAdapterCapabilities {
     bool supports_data_breakpoints = false;
 };
 
+struct SDapInitializeRequest {
+    std::string client_id   = "roundtable";
+    std::string client_name = "Roundtable";
+};
+
+struct SDapInitializeResponse {
+    bool                    success = false;
+    SDapAdapterCapabilities capabilities;
+    std::string             error_message;
+};
+
 class IDapTransport {
   public:
     virtual ~IDapTransport() = default;
@@ -38,13 +49,27 @@ class IDapTransport {
     virtual bool isConnected() const                                                            = 0;
 };
 
+class CStdioDapTransport : public IDapTransport {
+  public:
+    bool connect(const SDapEndpointConfig& endpoint_config, std::string& error_message) override;
+    bool sendMessage(const std::string& message, std::string& error_message) override;
+    bool readMessage(std::string& message, std::string& error_message) override;
+    bool isConnected() const override;
+
+  private:
+    bool connected_ = false;
+};
+
 class CDapDebugSession : public IDebugSession {
   public:
     explicit CDapDebugSession(std::unique_ptr<IDapTransport> transport, SDapEndpointConfig endpoint_config);
 
     static SDebugCapabilities            mapCapabilities(const SDapAdapterCapabilities& adapter_capabilities);
+    static std::string                   buildInitializeRequestMessage(const SDapInitializeRequest& initialize_request);
+    static SDapInitializeResponse        parseInitializeResponseMessage(const std::string& response_message);
 
     bool                                 connect();
+    bool                                 initialize();
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);

@@ -21,15 +21,27 @@ class CStubDapTransport : public IDapTransport {
     }
 
     bool sendMessage(const std::string& message, std::string& error_message) override {
-        static_cast<void>(message);
-        error_message = "Not implemented in stub";
-        return false;
+        last_sent_message_ = message;
+
+        if (!send_succeeds_) {
+            error_message = send_failure_message_;
+            return false;
+        }
+
+        error_message.clear();
+        return true;
     }
 
     bool readMessage(std::string& message, std::string& error_message) override {
-        message.clear();
-        error_message = "Not implemented in stub";
-        return false;
+        if (!read_succeeds_) {
+            message.clear();
+            error_message = read_failure_message_;
+            return false;
+        }
+
+        message = next_read_message_;
+        error_message.clear();
+        return true;
     }
 
     bool isConnected() const override {
@@ -40,10 +52,34 @@ class CStubDapTransport : public IDapTransport {
         return last_endpoint_config_;
     }
 
+    std::string getLastSentMessage() const {
+        return last_sent_message_;
+    }
+
+    void setNextReadMessage(std::string next_read_message) {
+        next_read_message_ = std::move(next_read_message);
+    }
+
+    void setSendFailure(std::string send_failure_message) {
+        send_succeeds_        = false;
+        send_failure_message_ = std::move(send_failure_message);
+    }
+
+    void setReadFailure(std::string read_failure_message) {
+        read_succeeds_        = false;
+        read_failure_message_ = std::move(read_failure_message);
+    }
+
   private:
     bool               should_connect_ = false;
     bool               connected_      = false;
+    bool               send_succeeds_  = true;
+    bool               read_succeeds_  = true;
     std::string        failure_message_;
+    std::string        send_failure_message_;
+    std::string        read_failure_message_;
+    std::string        next_read_message_;
+    std::string        last_sent_message_;
     SDapEndpointConfig last_endpoint_config_;
 };
 
@@ -134,4 +170,58 @@ TEST_CASE("CDapDebugSession returns watch errors while disconnected") {
     REQUIRE(watch_results.size() == 2);
     CHECK(watch_results[0].error_message == "DAP session is not connected");
     CHECK(watch_results[1].error_message == "DAP session is not connected");
+}
+
+TEST_CASE("CDapDebugSession builds an initialize request message") {
+    const std::string request_message = CDapDebugSession::buildInitializeRequestMessage({
+        .client_id   = "roundtable-test",
+        .client_name = "Roundtable Test",
+    });
+
+    CHECK(request_message.find("\"command\":\"initialize\"") != std::string::npos);
+    CHECK(request_message.find("\"clientID\":\"roundtable-test\"") != std::string::npos);
+    CHECK(request_message.find("\"clientName\":\"Roundtable Test\"") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses initialize capabilities from a response message") {
+    const std::string            response_message = "{\"success\":true,\"body\":{\"supportsReadMemoryRequest\":true,\"supportsWriteMemoryRequest\":false,"
+                                                    "\"supportsEvaluateForHovers\":true,\"supportsDisassembleRequest\":true,\"supportsDataBreakpoints\":false}}";
+
+    const SDapInitializeResponse response = CDapDebugSession::parseInitializeResponseMessage(response_message);
+
+    CHECK(response.success);
+    CHECK(response.capabilities.supports_read_memory);
+    CHECK_FALSE(response.capabilities.supports_write_memory);
+    CHECK(response.capabilities.supports_evaluate);
+    CHECK(response.capabilities.supports_disassemble);
+    CHECK_FALSE(response.capabilities.supports_data_breakpoints);
+}
+
+TEST_CASE("CDapDebugSession initializes from transport messages") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setNextReadMessage("{\"success\":true,\"body\":{\"supportsReadMemoryRequest\":true,\"supportsWriteMemoryRequest\":true,"
+                                  "\"supportsEvaluateForHovers\":true,\"supportsDisassembleRequest\":false,\"supportsDataBreakpoints\":true}}");
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.initialize());
+
+    const SDebugCapabilities capabilities = dap_session.getCapabilities();
+    CHECK(capabilities.supports_memory_read);
+    CHECK(capabilities.supports_memory_write);
+    CHECK(capabilities.supports_watch_expressions);
+    CHECK_FALSE(capabilities.supports_disassembly);
+    CHECK(capabilities.supports_data_breakpoints);
+}
+
+TEST_CASE("CDapDebugSession reports initialize parse failures") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setNextReadMessage("{\"success\":false}");
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    CHECK_FALSE(dap_session.initialize());
+    CHECK(dap_session.getLastError() == "DAP initialize response did not report success");
 }

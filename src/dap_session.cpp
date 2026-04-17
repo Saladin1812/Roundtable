@@ -1,5 +1,30 @@
 #include "dap_session.hpp"
 
+#include <string>
+
+bool CStdioDapTransport::connect(const SDapEndpointConfig& endpoint_config, std::string& error_message) {
+    static_cast<void>(endpoint_config);
+    error_message = "DAP stdio transport is not implemented yet";
+    connected_    = false;
+    return false;
+}
+
+bool CStdioDapTransport::sendMessage(const std::string& message, std::string& error_message) {
+    static_cast<void>(message);
+    error_message = "DAP stdio transport is not implemented yet";
+    return false;
+}
+
+bool CStdioDapTransport::readMessage(std::string& message, std::string& error_message) {
+    message.clear();
+    error_message = "DAP stdio transport is not implemented yet";
+    return false;
+}
+
+bool CStdioDapTransport::isConnected() const {
+    return connected_;
+}
+
 CDapDebugSession::CDapDebugSession(std::unique_ptr<IDapTransport> transport, SDapEndpointConfig endpoint_config) :
     transport_(std::move(transport)), endpoint_config_(std::move(endpoint_config)) {}
 
@@ -11,6 +36,27 @@ SDebugCapabilities CDapDebugSession::mapCapabilities(const SDapAdapterCapabiliti
         .supports_disassembly       = adapter_capabilities.supports_disassemble,
         .supports_data_breakpoints  = adapter_capabilities.supports_data_breakpoints,
     };
+}
+
+std::string CDapDebugSession::buildInitializeRequestMessage(const SDapInitializeRequest& initialize_request) {
+    return "{\"command\":\"initialize\",\"arguments\":{\"clientID\":\"" + initialize_request.client_id + "\",\"clientName\":\"" + initialize_request.client_name + "\"}}";
+}
+
+SDapInitializeResponse CDapDebugSession::parseInitializeResponseMessage(const std::string& response_message) {
+    SDapInitializeResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP initialize response did not report success";
+        return response;
+    }
+
+    response.success                                = true;
+    response.capabilities.supports_read_memory      = response_message.find("\"supportsReadMemoryRequest\":true") != std::string::npos;
+    response.capabilities.supports_write_memory     = response_message.find("\"supportsWriteMemoryRequest\":true") != std::string::npos;
+    response.capabilities.supports_evaluate         = response_message.find("\"supportsEvaluateForHovers\":true") != std::string::npos;
+    response.capabilities.supports_disassemble      = response_message.find("\"supportsDisassembleRequest\":true") != std::string::npos;
+    response.capabilities.supports_data_breakpoints = response_message.find("\"supportsDataBreakpoints\":true") != std::string::npos;
+    return response;
 }
 
 bool CDapDebugSession::connect() {
@@ -25,6 +71,37 @@ bool CDapDebugSession::connect() {
         return false;
     }
 
+    last_error_.clear();
+    return true;
+}
+
+bool CDapDebugSession::initialize() {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildInitializeRequestMessage({});
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    std::string response_message;
+    if (!transport_->readMessage(response_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    const auto response = parseInitializeResponseMessage(response_message);
+    if (!response.success) {
+        last_error_ = response.error_message;
+        return false;
+    }
+
+    adapter_capabilities_ = response.capabilities;
     last_error_.clear();
     return true;
 }
