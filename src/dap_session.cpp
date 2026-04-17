@@ -1,6 +1,11 @@
 #include "dap_session.hpp"
 
 #include <array>
+#include <cstring>
+#include <iostream>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -199,6 +204,228 @@ bool CStdioDapTransport::closeProcess(std::string& error_message) {
     return true;
 }
 
+CTcpDapTransport::~CTcpDapTransport() {
+    std::string error_message;
+    closeConnection(error_message);
+}
+
+namespace {
+
+    bool writeAllToFileDescriptor(int file_descriptor, const std::string& data, std::string& error_message) {
+        std::size_t written_total = 0;
+        while (written_total < data.size()) {
+            const auto written_now = write(file_descriptor, data.data() + written_total, data.size() - written_total);
+            if (written_now <= 0) {
+                error_message = "Failed to write DAP message";
+                return false;
+            }
+            written_total += static_cast<std::size_t>(written_now);
+        }
+
+        error_message.clear();
+        return true;
+    }
+
+    bool readFramedMessageFromFileDescriptor(int file_descriptor, std::string& message, std::string& error_message) {
+        std::string         header;
+        std::array<char, 1> byte_buffer = {};
+
+        while (header.find("\r\n\r\n") == std::string::npos) {
+            const auto read_now = read(file_descriptor, byte_buffer.data(), byte_buffer.size());
+            if (read_now <= 0) {
+                error_message = "Failed to read DAP header";
+                return false;
+            }
+
+            header.append(byte_buffer.data(), static_cast<std::size_t>(read_now));
+        }
+
+        const auto content_length_prefix = header.find("Content-Length:");
+        if (content_length_prefix == std::string::npos) {
+            error_message = "DAP response did not include Content-Length header";
+            return false;
+        }
+
+        const auto        value_start    = content_length_prefix + std::string("Content-Length:").size();
+        const auto        line_end       = header.find("\r\n", value_start);
+        const auto        body_start     = header.find("\r\n\r\n") + 4;
+        const std::size_t content_length = static_cast<std::size_t>(std::stoul(header.substr(value_start, line_end - value_start)));
+
+        message = header.substr(body_start);
+        while (message.size() < content_length) {
+            std::array<char, 4096> chunk_buffer = {};
+            const auto             read_now     = read(file_descriptor, chunk_buffer.data(), chunk_buffer.size());
+            if (read_now <= 0) {
+                error_message = "Failed to read DAP body";
+                return false;
+            }
+
+            message.append(chunk_buffer.data(), static_cast<std::size_t>(read_now));
+        }
+
+        message.resize(content_length);
+        error_message.clear();
+        return true;
+    }
+
+} // namespace
+
+bool CTcpDapTransport::connect(const SDapEndpointConfig& endpoint_config, std::string& error_message) {
+    if (endpoint_config.transport_kind != eDapTransportKind::TCP) {
+        error_message = "CTcpDapTransport only supports TCP endpoints";
+        return false;
+    }
+
+    if (endpoint_config.command.empty()) {
+        error_message = "DAP adapter command is empty";
+        return false;
+    }
+
+    std::string close_error;
+    closeConnection(close_error);
+
+    int port_probe_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (port_probe_socket < 0) {
+        error_message = "Failed to create TCP probe socket";
+        return false;
+    }
+
+    sockaddr_in probe_address     = {};
+    probe_address.sin_family      = AF_INET;
+    probe_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    probe_address.sin_port        = htons(endpoint_config.port);
+
+    if (bind(port_probe_socket, reinterpret_cast<sockaddr*>(&probe_address), sizeof(probe_address)) != 0) {
+        error_message = "Failed to bind TCP probe socket";
+        close(port_probe_socket);
+        return false;
+    }
+
+    sockaddr_in bound_address = {};
+    socklen_t   bound_length  = sizeof(bound_address);
+    if (getsockname(port_probe_socket, reinterpret_cast<sockaddr*>(&bound_address), &bound_length) != 0) {
+        error_message = "Failed to query TCP probe socket address";
+        close(port_probe_socket);
+        return false;
+    }
+
+    const auto bound_port = ntohs(bound_address.sin_port);
+    close(port_probe_socket);
+    const pid_t child_pid = fork();
+    if (child_pid < 0) {
+        error_message = "Failed to fork DAP adapter process";
+        closeConnection(close_error);
+        return false;
+    }
+
+    if (child_pid == 0) {
+        std::vector<std::string> argument_strings;
+        argument_strings.reserve(endpoint_config.arguments.size() + 5);
+        argument_strings.push_back(endpoint_config.command);
+        for (const auto& argument : endpoint_config.arguments) {
+            argument_strings.push_back(argument);
+        }
+        argument_strings.push_back("--port");
+        argument_strings.push_back(std::to_string(bound_port));
+        if (!endpoint_config.auth_token.empty()) {
+            argument_strings.push_back("--auth-token");
+            argument_strings.push_back(endpoint_config.auth_token);
+        }
+
+        std::vector<std::vector<char>> argument_buffers;
+        argument_buffers.reserve(argument_strings.size());
+        for (const auto& argument_string : argument_strings) {
+            argument_buffers.emplace_back(argument_string.begin(), argument_string.end());
+            argument_buffers.back().push_back('\0');
+        }
+
+        std::vector<char*> argv;
+        argv.reserve(argument_buffers.size() + 1);
+        for (auto& argument_buffer : argument_buffers) {
+            argv.push_back(argument_buffer.data());
+        }
+        argv.push_back(nullptr);
+
+        execvp(argv[0], argv.data());
+        _exit(127);
+    }
+
+    child_pid_                 = child_pid;
+    sockaddr_in server_address = {};
+    server_address.sin_family  = AF_INET;
+    server_address.sin_port    = htons(bound_port);
+    inet_pton(AF_INET, endpoint_config.host.c_str(), &server_address.sin_addr);
+
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+        if (socket_fd_ < 0) {
+            error_message = "Failed to create TCP client socket";
+            closeConnection(close_error);
+            return false;
+        }
+
+        if (::connect(socket_fd_, reinterpret_cast<sockaddr*>(&server_address), sizeof(server_address)) == 0) {
+            connected_ = true;
+            error_message.clear();
+            return true;
+        }
+
+        close(socket_fd_);
+        socket_fd_ = -1;
+        usleep(100000);
+    }
+
+    error_message = "Failed to connect to DAP adapter TCP port";
+    closeConnection(close_error);
+    return false;
+}
+
+bool CTcpDapTransport::sendMessage(const std::string& message, std::string& error_message) {
+    if (!connected_ || socket_fd_ < 0) {
+        error_message = "DAP TCP transport is not connected";
+        return false;
+    }
+
+    const std::string framed_message = "Content-Length: " + std::to_string(message.size()) + "\r\n\r\n" + message;
+    return writeAllToFileDescriptor(socket_fd_, framed_message, error_message);
+}
+
+bool CTcpDapTransport::readMessage(std::string& message, std::string& error_message) {
+    if (!connected_ || socket_fd_ < 0) {
+        error_message = "DAP TCP transport is not connected";
+        return false;
+    }
+
+    return readFramedMessageFromFileDescriptor(socket_fd_, message, error_message);
+}
+
+bool CTcpDapTransport::isConnected() const {
+    return connected_;
+}
+
+bool CTcpDapTransport::closeConnection(std::string& error_message) {
+    if (socket_fd_ >= 0) {
+        close(socket_fd_);
+        socket_fd_ = -1;
+    }
+
+    if (listen_socket_fd_ >= 0) {
+        close(listen_socket_fd_);
+        listen_socket_fd_ = -1;
+    }
+
+    if (child_pid_ > 0) {
+        kill(child_pid_, SIGTERM);
+        int wait_status = 0;
+        waitpid(child_pid_, &wait_status, 0);
+        child_pid_ = -1;
+    }
+
+    connected_ = false;
+    error_message.clear();
+    return true;
+}
+
 CDapDebugSession::CDapDebugSession(std::unique_ptr<IDapTransport> transport, SDapEndpointConfig endpoint_config) :
     transport_(std::move(transport)), endpoint_config_(std::move(endpoint_config)) {}
 
@@ -330,6 +557,53 @@ SDapReadMemoryResponse CDapDebugSession::parseReadMemoryResponseMessage(const st
     return response;
 }
 
+std::string CDapDebugSession::buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request) {
+    std::string arguments_json = "[";
+    for (std::size_t i = 0; i < launch_request.arguments.size(); ++i) {
+        if (i > 0) {
+            arguments_json += ",";
+        }
+        arguments_json += "\"" + launch_request.arguments[i] + "\"";
+    }
+    arguments_json += "]";
+
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"launch","arguments":{"program":")" + launch_request.program + R"(","args":)" +
+        arguments_json + R"(,"cwd":")" + launch_request.working_directory + R"(","stopOnEntry":)" + std::string(launch_request.stop_on_entry ? "true" : "false") +
+        R"(,"terminal":"console"}})";
+}
+
+std::string CDapDebugSession::buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"attach","arguments":{"pid":)" + std::to_string(attach_request.process_id) +
+        ",\"stopOnEntry\":" + std::string(attach_request.stop_on_entry ? "true" : "false") + "}}";
+}
+
+std::string CDapDebugSession::buildConfigurationDoneRequestMessage(int sequence_number) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"configurationDone","arguments":{}})";
+}
+
+SDapProtocolMessage CDapDebugSession::parseProtocolMessage(const std::string& response_message) {
+    SDapProtocolMessage message = {};
+
+    if (response_message.find(R"("type":"event")") != std::string::npos) {
+        message.type = "event";
+        if (const auto event_name = extractJsonStringField(response_message, "event"); event_name.has_value()) {
+            message.event_name = event_name.value();
+        }
+        return message;
+    }
+
+    if (response_message.find(R"("type":"response")") != std::string::npos) {
+        message.type = "response";
+        if (const auto command_name = extractJsonStringField(response_message, "command"); command_name.has_value()) {
+            message.command_name = command_name.value();
+        }
+        message.success = response_message.find("\"success\":true") != std::string::npos;
+        return message;
+    }
+
+    return message;
+}
+
 bool CDapDebugSession::connect() {
     if (!transport_) {
         last_error_ = "DAP transport is not configured";
@@ -376,6 +650,154 @@ bool CDapDebugSession::initialize() {
     next_sequence_number_ = 2;
     last_error_.clear();
     return true;
+}
+
+bool CDapDebugSession::launch(const SDapLaunchRequest& launch_request) {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildLaunchRequestMessage(next_sequence_number_++, launch_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            last_error_ = error_message;
+            return false;
+        }
+
+        std::cerr << "dap launch message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+        if (message.type == "event" && message.event_name == "initialized") {
+            last_error_.clear();
+            return true;
+        }
+    }
+}
+
+bool CDapDebugSession::attach(const SDapAttachRequest& attach_request) {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildAttachRequestMessage(next_sequence_number_++, attach_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            last_error_ = error_message;
+            return false;
+        }
+
+        std::cerr << "dap attach message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event" && message.event_name == "initialized") {
+            last_error_.clear();
+            return true;
+        }
+
+        if (message.type == "response" && message.command_name == "attach" && !message.success) {
+            last_error_ = "DAP attach response did not report success";
+            return false;
+        }
+    }
+}
+
+bool CDapDebugSession::configurationDone() {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildConfigurationDoneRequestMessage(next_sequence_number_++);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            last_error_ = error_message;
+            return false;
+        }
+
+        std::cerr << "dap configurationDone message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+        if (message.type == "response" && message.command_name == "launch") {
+            if (!message.success) {
+                last_error_ = "DAP launch response did not report success";
+                return false;
+            }
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "configurationDone") {
+            if (!message.success) {
+                last_error_ = "DAP configurationDone response did not report success";
+                return false;
+            }
+
+            last_error_.clear();
+            return true;
+        }
+    }
+}
+
+bool CDapDebugSession::waitForStoppedEvent() {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            last_error_ = error_message;
+            return false;
+        }
+
+        std::cerr << "dap waitForStoppedEvent message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+        if (message.type == "response" && message.command_name == "launch") {
+            if (!message.success) {
+                last_error_ = "DAP launch response did not report success";
+                return false;
+            }
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "configurationDone") {
+            if (!message.success) {
+                last_error_ = "DAP configurationDone response did not report success";
+                return false;
+            }
+            continue;
+        }
+
+        if (message.type == "event" && message.event_name == "stopped") {
+            last_error_.clear();
+            return true;
+        }
+    }
 }
 
 bool CDapDebugSession::isConnected() const {

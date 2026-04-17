@@ -18,6 +18,7 @@ struct SDapEndpointConfig {
     std::vector<std::string> arguments;
     std::string              host = "127.0.0.1";
     std::uint16_t            port = 0;
+    std::string              auth_token;
 };
 
 struct SDapAdapterCapabilities {
@@ -51,6 +52,25 @@ struct SDapReadMemoryResponse {
     std::string               error_message;
 };
 
+struct SDapLaunchRequest {
+    std::string              program;
+    std::vector<std::string> arguments;
+    std::string              working_directory;
+    bool                     stop_on_entry = true;
+};
+
+struct SDapAttachRequest {
+    std::int64_t process_id    = 0;
+    bool         stop_on_entry = true;
+};
+
+struct SDapProtocolMessage {
+    std::string type;
+    std::string event_name;
+    std::string command_name;
+    bool        success = false;
+};
+
 class IDapTransport {
   public:
     virtual ~IDapTransport() = default;
@@ -80,6 +100,25 @@ class CStdioDapTransport : public IDapTransport {
     int  write_fd_  = -1;
 };
 
+class CTcpDapTransport : public IDapTransport {
+  public:
+    CTcpDapTransport() = default;
+    ~CTcpDapTransport() override;
+
+    bool connect(const SDapEndpointConfig& endpoint_config, std::string& error_message) override;
+    bool sendMessage(const std::string& message, std::string& error_message) override;
+    bool readMessage(std::string& message, std::string& error_message) override;
+    bool isConnected() const override;
+
+  private:
+    bool closeConnection(std::string& error_message);
+
+    bool connected_        = false;
+    int  child_pid_        = -1;
+    int  listen_socket_fd_ = -1;
+    int  socket_fd_        = -1;
+};
+
 class CDapDebugSession : public IDebugSession {
   public:
     explicit CDapDebugSession(std::unique_ptr<IDapTransport> transport, SDapEndpointConfig endpoint_config);
@@ -89,9 +128,17 @@ class CDapDebugSession : public IDebugSession {
     static SDapInitializeResponse        parseInitializeResponseMessage(const std::string& response_message);
     static std::string                   buildReadMemoryRequestMessage(int sequence_number, const SDapReadMemoryRequest& read_memory_request);
     static SDapReadMemoryResponse        parseReadMemoryResponseMessage(const std::string& response_message);
+    static std::string                   buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request);
+    static std::string                   buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request);
+    static std::string                   buildConfigurationDoneRequestMessage(int sequence_number);
+    static SDapProtocolMessage           parseProtocolMessage(const std::string& response_message);
 
     bool                                 connect();
     bool                                 initialize();
+    bool                                 launch(const SDapLaunchRequest& launch_request);
+    bool                                 attach(const SDapAttachRequest& attach_request);
+    bool                                 configurationDone();
+    bool                                 waitForStoppedEvent();
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);

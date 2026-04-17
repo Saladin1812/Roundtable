@@ -63,6 +63,10 @@ add_executable(roundtable_dap_probe
   src/memory_view.cpp
 )
 
+add_executable(roundtable_dap_sample
+  samples/dap_sample_target.cpp
+)
+
 target_include_directories(roundtable PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

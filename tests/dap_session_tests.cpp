@@ -39,7 +39,14 @@ class CStubDapTransport : public IDapTransport {
             return false;
         }
 
-        message = next_read_message_;
+        if (read_messages_.empty()) {
+            message.clear();
+            error_message = "No stub DAP messages available";
+            return false;
+        }
+
+        message = read_messages_.front();
+        read_messages_.erase(read_messages_.begin());
         error_message.clear();
         return true;
     }
@@ -57,7 +64,12 @@ class CStubDapTransport : public IDapTransport {
     }
 
     void setNextReadMessage(std::string next_read_message) {
-        next_read_message_ = std::move(next_read_message);
+        read_messages_.clear();
+        read_messages_.push_back(std::move(next_read_message));
+    }
+
+    void setReadMessages(std::vector<std::string> read_messages) {
+        read_messages_ = std::move(read_messages);
     }
 
     void setSendFailure(std::string send_failure_message) {
@@ -71,16 +83,16 @@ class CStubDapTransport : public IDapTransport {
     }
 
   private:
-    bool               should_connect_ = false;
-    bool               connected_      = false;
-    bool               send_succeeds_  = true;
-    bool               read_succeeds_  = true;
-    std::string        failure_message_;
-    std::string        send_failure_message_;
-    std::string        read_failure_message_;
-    std::string        next_read_message_;
-    std::string        last_sent_message_;
-    SDapEndpointConfig last_endpoint_config_;
+    bool                     should_connect_ = false;
+    bool                     connected_      = false;
+    bool                     send_succeeds_  = true;
+    bool                     read_succeeds_  = true;
+    std::string              failure_message_;
+    std::string              send_failure_message_;
+    std::string              read_failure_message_;
+    std::vector<std::string> read_messages_;
+    std::string              last_sent_message_;
+    SDapEndpointConfig       last_endpoint_config_;
 };
 
 TEST_CASE("CDapDebugSession maps adapter capabilities to app capabilities") {
@@ -252,4 +264,92 @@ TEST_CASE("CDapDebugSession parses a readMemory response message") {
     CHECK(response.memory_bytes[2] == 0x6C);
     CHECK(response.memory_bytes[3] == 0x6C);
     CHECK(response.memory_bytes[4] == 0x6F);
+}
+
+TEST_CASE("CDapDebugSession builds a launch request message") {
+    const std::string request_message = CDapDebugSession::buildLaunchRequestMessage(9,
+                                                                                    {
+                                                                                        .program           = "/tmp/program",
+                                                                                        .arguments         = {"arg1", "arg2"},
+                                                                                        .working_directory = "/tmp",
+                                                                                        .stop_on_entry     = true,
+                                                                                    });
+
+    CHECK(request_message.find("\"seq\":9") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"launch\"") != std::string::npos);
+    CHECK(request_message.find("\"program\":\"/tmp/program\"") != std::string::npos);
+    CHECK(request_message.find("\"args\":[\"arg1\",\"arg2\"]") != std::string::npos);
+    CHECK(request_message.find("\"cwd\":\"/tmp\"") != std::string::npos);
+    CHECK(request_message.find("\"stopOnEntry\":true") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession builds an attach request message") {
+    const std::string request_message = CDapDebugSession::buildAttachRequestMessage(11,
+                                                                                    {
+                                                                                        .process_id    = 4242,
+                                                                                        .stop_on_entry = true,
+                                                                                    });
+
+    CHECK(request_message.find("\"seq\":11") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"attach\"") != std::string::npos);
+    CHECK(request_message.find("\"pid\":4242") != std::string::npos);
+    CHECK(request_message.find("\"stopOnEntry\":true") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses generic DAP protocol messages") {
+    const auto event_message = CDapDebugSession::parseProtocolMessage(R"({"type":"event","event":"stopped"})");
+    CHECK(event_message.type == "event");
+    CHECK(event_message.event_name == "stopped");
+
+    const auto response_message = CDapDebugSession::parseProtocolMessage(R"({"type":"response","command":"launch","success":true})");
+    CHECK(response_message.type == "response");
+    CHECK(response_message.command_name == "launch");
+    CHECK(response_message.success);
+}
+
+TEST_CASE("CDapDebugSession launches after receiving initialized event and launch response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"initialized"})",
+        R"({"type":"response","command":"launch","success":true})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.launch({
+        .program           = "/tmp/program",
+        .arguments         = {},
+        .working_directory = "/tmp",
+        .stop_on_entry     = true,
+    }));
+}
+
+TEST_CASE("CDapDebugSession completes configurationDone and sees a stopped event") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"configurationDone","success":true})",
+        R"({"type":"event","event":"stopped"})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.configurationDone());
+    REQUIRE(dap_session.waitForStoppedEvent());
+}
+
+TEST_CASE("CDapDebugSession attaches after receiving initialized event") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"initialized"})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.attach({
+        .process_id    = 4242,
+        .stop_on_entry = true,
+    }));
 }
