@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(USE_MOLD "Use the mold linker when supported" ON)
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 
 include(CTest)
 
@@ -17,6 +19,21 @@ add_compile_options(
   -Wpedantic
   -Werror
 )
+
+set(SANITIZER_FLAGS "")
+
+if(ENABLE_ASAN)
+  list(APPEND SANITIZER_FLAGS -fsanitize=address)
+endif()
+
+if(ENABLE_UBSAN)
+  list(APPEND SANITIZER_FLAGS -fsanitize=undefined)
+endif()
+
+if(SANITIZER_FLAGS)
+  add_compile_options(${SANITIZER_FLAGS} -fno-omit-frame-pointer)
+  add_link_options(${SANITIZER_FLAGS} -fno-omit-frame-pointer)
+endif()
 
 if(USE_MOLD)
   find_program(MOLD_EXECUTABLE mold)
