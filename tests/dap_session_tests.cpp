@@ -241,7 +241,7 @@ TEST_CASE("CDapDebugSession builds a readMemory request message") {
 }
 
 TEST_CASE("CDapDebugSession parses a readMemory response message") {
-    const std::string            response_message = "{\"success\":true,\"body\":{\"address\":\"0x1000\",\"data\":\"SGVsbG8=\"}}";
+    const std::string            response_message = R"({"success":true,"body":{"address":"0x1000","data":"SGVsbG8="}})";
 
     const SDapReadMemoryResponse response = CDapDebugSession::parseReadMemoryResponseMessage(response_message);
 
