@@ -62,8 +62,10 @@ if(BUILD_TESTING)
   FetchContent_MakeAvailable(Catch2)
 
   add_executable(roundtable_tests
+    tests/debug_session_tests.cpp
     tests/pane_state_tests.cpp
     tests/memory_view_tests.cpp
+    src/debug_session.cpp
     src/memory_view.cpp
     src/pane_state.cpp
   )

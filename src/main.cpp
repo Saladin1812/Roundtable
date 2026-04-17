@@ -3,6 +3,7 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
+#include "debug_session.hpp"
 #include "memory_view.hpp"
 #include "pane_state.hpp"
 
@@ -31,21 +32,23 @@ static ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, boo
 int main() {
     using namespace ftxui;
 
-    auto                    screen               = ScreenInteractive::Fullscreen();
-    eFocusPane              focused_pane         = eFocusPane::MEMORY_VIEW;
-    CMockMemoryDataProvider memory_data_provider = {};
+    auto                 screen          = ScreenInteractive::Fullscreen();
+    eFocusPane           focused_pane    = eFocusPane::MEMORY_VIEW;
+    CMockDebugSession    debug_session   = {};
+    SDebugSelection      debug_selection = {};
 
-    SSelectablePaneState    locals_pane = {
-           .title = " Locals ",
-           .rows  = {"a : int", "b : int"},
+    SSelectablePaneState locals_pane = {
+        .title = " Locals ",
+        .rows  = {"a : int", "b : int"},
     };
     SSelectablePaneState memory_view_pane = {
         .title = " Memory View ",
-        .rows  = generateMemoryViewRows(memory_data_provider.readMemory({
-             .start_address = 0x1000,
-             .byte_count    = 40,
-             .bytes_per_row = 8,
-        })),
+        .rows  = generateMemoryViewRows(debug_session.readMemory(debug_selection,
+                                                                 {
+                                                                     .start_address = 0x1000,
+                                                                     .byte_count    = 40,
+                                                                     .bytes_per_row = 8,
+                                                                })),
     };
     SSelectablePaneState watch_list_pane = {
         .title = " Watch List ",

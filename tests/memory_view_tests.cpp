@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "debug_session.hpp"
 #include "memory_view.hpp"
 
 TEST_CASE("generateMemoryViewRows formats bytes into memory rows") {
@@ -43,13 +44,15 @@ TEST_CASE("generateMemoryViewRows returns no rows when bytes_per_row is zero") {
 }
 
 TEST_CASE("mock memory provider returns requested byte count") {
-    const CMockMemoryDataProvider memory_data_provider = {};
+    const CMockDebugSession debug_session   = {};
+    const SDebugSelection   debug_selection = {};
 
-    const SMemoryReadResult       memory_read_result = memory_data_provider.readMemory({
-              .start_address = 0x4000,
-              .byte_count    = 16,
-              .bytes_per_row = 8,
-    });
+    const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
+                                                                          {
+                                                                              .start_address = 0x4000,
+                                                                              .byte_count    = 16,
+                                                                              .bytes_per_row = 8,
+                                                                          });
 
     CHECK(memory_read_result.start_address == 0x4000);
     CHECK(memory_read_result.bytes_per_row == 8);
@@ -58,13 +61,15 @@ TEST_CASE("mock memory provider returns requested byte count") {
 }
 
 TEST_CASE("mock memory provider clamps requested byte count to available bytes") {
-    const CMockMemoryDataProvider memory_data_provider = {};
+    const CMockDebugSession debug_session   = {};
+    const SDebugSelection   debug_selection = {};
 
-    const SMemoryReadResult       memory_read_result = memory_data_provider.readMemory({
-              .start_address = 0x5000,
-              .byte_count    = 64,
-              .bytes_per_row = 8,
-    });
+    const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
+                                                                          {
+                                                                              .start_address = 0x5000,
+                                                                              .byte_count    = 64,
+                                                                              .bytes_per_row = 8,
+                                                                          });
 
     CHECK(memory_read_result.memory_bytes.size() == 40);
 }
