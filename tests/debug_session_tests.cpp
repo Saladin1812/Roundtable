@@ -33,6 +33,24 @@ TEST_CASE("mock debug session reads memory for the current selection") {
     CHECK(memory_read_result.error_message.empty());
 }
 
+TEST_CASE("mock debug session returns locals for the current selection") {
+    const CMockDebugSession debug_session   = {};
+    const SDebugSelection   debug_selection = {
+          .thread_id   = 1,
+          .frame_index = 0,
+    };
+
+    const std::vector<SLocalVariable> locals = debug_session.getLocals(debug_selection);
+
+    REQUIRE(locals.size() == 2);
+    CHECK(locals[0].name == "a");
+    CHECK(locals[0].value == "42");
+    CHECK(locals[0].type == "int");
+    CHECK(locals[1].name == "ptr");
+    CHECK(locals[1].value == "0x1000");
+    CHECK(locals[1].type == "char*");
+}
+
 TEST_CASE("mock debug session evaluates watch expressions") {
     const CMockDebugSession             debug_session     = {};
     const SDebugSelection               debug_selection   = {};

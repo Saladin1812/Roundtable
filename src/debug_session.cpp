@@ -13,6 +13,23 @@ SDebugCapabilities CMockDebugSession::getCapabilities() const {
     };
 }
 
+std::vector<SLocalVariable> CMockDebugSession::getLocals(const SDebugSelection& selection) const {
+    static_cast<void>(selection);
+
+    return {
+        {
+            .name  = "a",
+            .value = "42",
+            .type  = "int",
+        },
+        {
+            .name  = "ptr",
+            .value = "0x1000",
+            .type  = "char*",
+        },
+    };
+}
+
 SMemoryReadResult CMockDebugSession::readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const {
     static_cast<void>(selection);
 

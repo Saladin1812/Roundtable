@@ -22,6 +22,12 @@ struct SWatchExpression {
     std::string expression;
 };
 
+struct SLocalVariable {
+    std::string name;
+    std::string value;
+    std::string type;
+};
+
 struct SWatchResult {
     std::string expression;
     std::string value;
@@ -41,6 +47,7 @@ class IDebugSession {
     virtual ~IDebugSession() = default;
 
     virtual SDebugCapabilities                   getCapabilities() const                                                                                         = 0;
+    virtual std::vector<SLocalVariable>          getLocals(const SDebugSelection& selection) const                                                               = 0;
     virtual SMemoryReadResult                    readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const                           = 0;
     virtual std::vector<SWatchResult>            evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) const = 0;
     virtual std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) const = 0;
@@ -49,6 +56,7 @@ class IDebugSession {
 class CMockDebugSession : public IDebugSession {
   public:
     SDebugCapabilities                   getCapabilities() const override;
+    std::vector<SLocalVariable>          getLocals(const SDebugSelection& selection) const override;
     SMemoryReadResult                    readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) const override;
     std::vector<SWatchResult>            evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) const override;
     std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) const override;
