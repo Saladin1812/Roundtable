@@ -1313,16 +1313,16 @@ std::vector<SLocalVariable> CDapDebugSession::getLocals(const SDebugSelection& s
 
     const auto stack_trace_response = getStackTrace({
         .thread_id   = static_cast<int>(selection.thread_id),
-        .start_frame = selection.frame_index,
-        .levels      = 1,
+        .start_frame = 0,
+        .levels      = selection.frame_index + 1,
     });
 
-    if (!stack_trace_response.success || stack_trace_response.stack_frames.empty()) {
+    if (!stack_trace_response.success || stack_trace_response.stack_frames.size() <= selection.frame_index) {
         return {};
     }
 
     const auto scopes_response = getScopes({
-        .frame_id = stack_trace_response.stack_frames.front().id,
+        .frame_id = stack_trace_response.stack_frames[selection.frame_index].id,
     });
 
     if (!scopes_response.success || scopes_response.scopes.empty()) {

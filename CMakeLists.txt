@@ -67,6 +67,11 @@ add_executable(roundtable_dap_sample
   samples/dap_sample_target.cpp
 )
 
+target_compile_options(roundtable_dap_sample PRIVATE
+  -g
+  -O0
+)
+
 target_include_directories(roundtable PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

@@ -624,3 +624,25 @@ TEST_CASE("CDapDebugSession resolves locals through stackTrace scopes and variab
     CHECK(locals[1].value == "0x1000");
     CHECK(locals[1].type == "char *");
 }
+
+TEST_CASE("CDapDebugSession resolves locals from the selected nonzero frame index") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":1001,"name":"helper","line":9,"column":1,"source":{"path":"/tmp/sample.cpp"}},{"id":1008,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}}]}})",
+        R"({"type":"response","command":"scopes","success":true,"body":{"scopes":[{"name":"Locals","variablesReference":23}]}})",
+        R"({"type":"response","command":"variables","success":true,"body":{"variables":[{"name":"sample_value","value":"42","type":"int","variablesReference":0}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto locals = dap_session.getLocals({
+        .thread_id   = 1,
+        .frame_index = 1,
+    });
+
+    REQUIRE(locals.size() == 1);
+    CHECK(locals[0].name == "sample_value");
+    CHECK(locals[0].value == "42");
+    CHECK(locals[0].type == "int");
+}
