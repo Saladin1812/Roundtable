@@ -155,12 +155,13 @@ class CStdioDapTransport : public IDapTransport {
     bool isConnected() const override;
 
   private:
-    bool closeProcess(std::string& error_message);
+    bool        closeProcess(std::string& error_message);
 
-    bool connected_ = false;
-    int  child_pid_ = -1;
-    int  read_fd_   = -1;
-    int  write_fd_  = -1;
+    bool        connected_ = false;
+    int         child_pid_ = -1;
+    int         read_fd_   = -1;
+    int         write_fd_  = -1;
+    std::string pending_read_buffer_;
 };
 
 class CTcpDapTransport : public IDapTransport {
@@ -174,12 +175,13 @@ class CTcpDapTransport : public IDapTransport {
     bool isConnected() const override;
 
   private:
-    bool closeConnection(std::string& error_message);
+    bool        closeConnection(std::string& error_message);
 
-    bool connected_        = false;
-    int  child_pid_        = -1;
-    int  listen_socket_fd_ = -1;
-    int  socket_fd_        = -1;
+    bool        connected_        = false;
+    int         child_pid_        = -1;
+    int         listen_socket_fd_ = -1;
+    int         socket_fd_        = -1;
+    std::string pending_read_buffer_;
 };
 
 class CDapDebugSession : public IDebugSession {

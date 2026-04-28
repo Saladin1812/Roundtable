@@ -17,6 +17,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+namespace {
+
+    bool readFramedMessageFromFileDescriptor(int file_descriptor, std::string& pending_buffer, std::string& message, std::string& error_message);
+
+} // namespace
+
 CStdioDapTransport::~CStdioDapTransport() {
     std::string error_message;
     closeProcess(error_message);
@@ -104,6 +110,7 @@ bool CStdioDapTransport::connect(const SDapEndpointConfig& endpoint_config, std:
     write_fd_  = stdin_pipe[1];
     read_fd_   = stdout_pipe[0];
     connected_ = true;
+    pending_read_buffer_.clear();
     error_message.clear();
     return true;
 }
@@ -136,46 +143,7 @@ bool CStdioDapTransport::readMessage(std::string& message, std::string& error_me
         return false;
     }
 
-    std::string         header;
-    std::array<char, 1> byte_buffer = {};
-
-    while (header.find("\r\n\r\n") == std::string::npos) {
-        const auto read_now = read(read_fd_, byte_buffer.data(), byte_buffer.size());
-        if (read_now <= 0) {
-            error_message = "Failed to read DAP header from adapter";
-            return false;
-        }
-
-        header.append(byte_buffer.data(), static_cast<std::size_t>(read_now));
-    }
-
-    const auto content_length_prefix = header.find("Content-Length:");
-    if (content_length_prefix == std::string::npos) {
-        error_message = "DAP response did not include Content-Length header";
-        return false;
-    }
-
-    const auto        value_start = content_length_prefix + std::string("Content-Length:").size();
-    const auto        line_end    = header.find("\r\n", value_start);
-    const auto        body_start  = header.find("\r\n\r\n") + 4;
-
-    const std::size_t content_length = static_cast<std::size_t>(std::stoul(header.substr(value_start, line_end - value_start)));
-
-    message = header.substr(body_start);
-    while (message.size() < content_length) {
-        std::array<char, 4096> chunk_buffer = {};
-        const auto             read_now     = read(read_fd_, chunk_buffer.data(), chunk_buffer.size());
-        if (read_now <= 0) {
-            error_message = "Failed to read DAP body from adapter";
-            return false;
-        }
-
-        message.append(chunk_buffer.data(), static_cast<std::size_t>(read_now));
-    }
-
-    message.resize(content_length);
-    error_message.clear();
-    return true;
+    return readFramedMessageFromFileDescriptor(read_fd_, pending_read_buffer_, message, error_message);
 }
 
 bool CStdioDapTransport::isConnected() const {
@@ -201,6 +169,7 @@ bool CStdioDapTransport::closeProcess(std::string& error_message) {
     }
 
     connected_ = false;
+    pending_read_buffer_.clear();
     error_message.clear();
     return true;
 }
@@ -227,46 +196,38 @@ namespace {
         return true;
     }
 
-    bool readFramedMessageFromFileDescriptor(int file_descriptor, std::string& message, std::string& error_message) {
-        std::string         header;
-        std::array<char, 1> byte_buffer = {};
+    bool readFramedMessageFromFileDescriptor(int file_descriptor, std::string& pending_buffer, std::string& message, std::string& error_message) {
+        while (true) {
+            const auto header_end = pending_buffer.find("\r\n\r\n");
+            if (header_end != std::string::npos) {
+                const auto content_length_prefix = pending_buffer.find("Content-Length:");
+                if (content_length_prefix == std::string::npos || content_length_prefix > header_end) {
+                    error_message = "DAP response did not include Content-Length header";
+                    return false;
+                }
 
-        while (header.find("\r\n\r\n") == std::string::npos) {
-            const auto read_now = read(file_descriptor, byte_buffer.data(), byte_buffer.size());
-            if (read_now <= 0) {
-                error_message = "Failed to read DAP header";
-                return false;
+                const auto        value_start    = content_length_prefix + std::string("Content-Length:").size();
+                const auto        line_end       = pending_buffer.find("\r\n", value_start);
+                const std::size_t content_length = static_cast<std::size_t>(std::stoul(pending_buffer.substr(value_start, line_end - value_start)));
+                const auto        body_start     = header_end + 4;
+
+                if (pending_buffer.size() >= body_start + content_length) {
+                    message = pending_buffer.substr(body_start, content_length);
+                    pending_buffer.erase(0, body_start + content_length);
+                    error_message.clear();
+                    return true;
+                }
             }
 
-            header.append(byte_buffer.data(), static_cast<std::size_t>(read_now));
-        }
-
-        const auto content_length_prefix = header.find("Content-Length:");
-        if (content_length_prefix == std::string::npos) {
-            error_message = "DAP response did not include Content-Length header";
-            return false;
-        }
-
-        const auto        value_start    = content_length_prefix + std::string("Content-Length:").size();
-        const auto        line_end       = header.find("\r\n", value_start);
-        const auto        body_start     = header.find("\r\n\r\n") + 4;
-        const std::size_t content_length = static_cast<std::size_t>(std::stoul(header.substr(value_start, line_end - value_start)));
-
-        message = header.substr(body_start);
-        while (message.size() < content_length) {
             std::array<char, 4096> chunk_buffer = {};
             const auto             read_now     = read(file_descriptor, chunk_buffer.data(), chunk_buffer.size());
             if (read_now <= 0) {
-                error_message = "Failed to read DAP body";
+                error_message = header_end == std::string::npos ? "Failed to read DAP header" : "Failed to read DAP body";
                 return false;
             }
 
-            message.append(chunk_buffer.data(), static_cast<std::size_t>(read_now));
+            pending_buffer.append(chunk_buffer.data(), static_cast<std::size_t>(read_now));
         }
-
-        message.resize(content_length);
-        error_message.clear();
-        return true;
     }
 
 } // namespace
@@ -367,6 +328,7 @@ bool CTcpDapTransport::connect(const SDapEndpointConfig& endpoint_config, std::s
 
         if (::connect(socket_fd_, reinterpret_cast<sockaddr*>(&server_address), sizeof(server_address)) == 0) {
             connected_ = true;
+            pending_read_buffer_.clear();
             error_message.clear();
             return true;
         }
@@ -397,7 +359,7 @@ bool CTcpDapTransport::readMessage(std::string& message, std::string& error_mess
         return false;
     }
 
-    return readFramedMessageFromFileDescriptor(socket_fd_, message, error_message);
+    return readFramedMessageFromFileDescriptor(socket_fd_, pending_read_buffer_, message, error_message);
 }
 
 bool CTcpDapTransport::isConnected() const {
@@ -423,6 +385,7 @@ bool CTcpDapTransport::closeConnection(std::string& error_message) {
     }
 
     connected_ = false;
+    pending_read_buffer_.clear();
     error_message.clear();
     return true;
 }
