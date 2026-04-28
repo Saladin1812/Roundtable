@@ -288,11 +288,11 @@ TEST_CASE("CDapDebugSession parses a threads response message") {
 
 TEST_CASE("CDapDebugSession builds a stackTrace request message") {
     const std::string request_message = CDapDebugSession::buildStackTraceRequestMessage(12,
-                                                                                         {
-                                                                                             .thread_id   = 42,
-                                                                                             .start_frame = 0,
-                                                                                             .levels      = 10,
-                                                                                         });
+                                                                                        {
+                                                                                            .thread_id   = 42,
+                                                                                            .start_frame = 0,
+                                                                                            .levels      = 10,
+                                                                                        });
 
     CHECK(request_message.find("\"seq\":12") != std::string::npos);
     CHECK(request_message.find("\"command\":\"stackTrace\"") != std::string::npos);
@@ -302,7 +302,7 @@ TEST_CASE("CDapDebugSession builds a stackTrace request message") {
 }
 
 TEST_CASE("CDapDebugSession parses a stackTrace response message") {
-    const std::string            response_message =
+    const std::string response_message =
         R"({"success":true,"body":{"stackFrames":[{"id":1001,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}},{"id":1002,"name":"helper","line":34,"column":1,"source":{"path":"/tmp/helper.cpp"}}]}})";
     const SDapStackTraceResponse response = CDapDebugSession::parseStackTraceResponseMessage(response_message);
 
@@ -331,6 +331,58 @@ TEST_CASE("CDapDebugSession parses stackTrace frames when id is not the first fi
     CHECK(response.stack_frames[0].line == 3);
     CHECK(response.stack_frames[0].column == 0);
     CHECK(response.stack_frames[0].source_path.empty());
+}
+
+TEST_CASE("CDapDebugSession builds a scopes request message") {
+    const std::string request_message = CDapDebugSession::buildScopesRequestMessage(13,
+                                                                                    {
+                                                                                        .frame_id = 1001,
+                                                                                    });
+
+    CHECK(request_message.find("\"seq\":13") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"scopes\"") != std::string::npos);
+    CHECK(request_message.find("\"frameId\":1001") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a scopes response message") {
+    const std::string        response_message = R"({"success":true,"body":{"scopes":[{"name":"Arguments","variablesReference":17},{"name":"Locals","variablesReference":23}]}})";
+
+    const SDapScopesResponse response = CDapDebugSession::parseScopesResponseMessage(response_message);
+
+    REQUIRE(response.success);
+    REQUIRE(response.scopes.size() == 2);
+    CHECK(response.scopes[0].name == "Arguments");
+    CHECK(response.scopes[0].variables_reference == 17);
+    CHECK(response.scopes[1].name == "Locals");
+    CHECK(response.scopes[1].variables_reference == 23);
+}
+
+TEST_CASE("CDapDebugSession builds a variables request message") {
+    const std::string request_message = CDapDebugSession::buildVariablesRequestMessage(14,
+                                                                                       {
+                                                                                           .variables_reference = 23,
+                                                                                       });
+
+    CHECK(request_message.find("\"seq\":14") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"variables\"") != std::string::npos);
+    CHECK(request_message.find("\"variablesReference\":23") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a variables response message") {
+    const std::string response_message =
+        R"({"success":true,"body":{"variables":[{"name":"value","value":"42","type":"int","variablesReference":0},{"name":"ptr","value":"0x1000","type":"char *","variablesReference":7}]}})";
+
+    const SDapVariablesResponse response = CDapDebugSession::parseVariablesResponseMessage(response_message);
+
+    REQUIRE(response.success);
+    REQUIRE(response.variables.size() == 2);
+    CHECK(response.variables[0].name == "value");
+    CHECK(response.variables[0].value == "42");
+    CHECK(response.variables[0].type == "int");
+    CHECK(response.variables[1].name == "ptr");
+    CHECK(response.variables[1].value == "0x1000");
+    CHECK(response.variables[1].type == "char *");
+    CHECK(response.variables[1].variables_reference == 7);
 }
 
 TEST_CASE("CDapDebugSession builds a launch request message") {
@@ -469,4 +521,70 @@ TEST_CASE("CDapDebugSession returns stack frames from a stackTrace response") {
     CHECK(stack_trace_response.stack_frames[0].id == 1001);
     CHECK(stack_trace_response.stack_frames[0].name == "main");
     CHECK(stack_trace_response.stack_frames[0].source_path == "/tmp/sample.cpp");
+}
+
+TEST_CASE("CDapDebugSession returns scopes from a scopes response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"output","body":{"category":"console","output":"hello"}})",
+        R"({"type":"response","command":"scopes","success":true,"body":{"scopes":[{"name":"Locals","variablesReference":23}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto scopes_response = dap_session.getScopes({
+        .frame_id = 1001,
+    });
+
+    REQUIRE(scopes_response.success);
+    REQUIRE(scopes_response.scopes.size() == 1);
+    CHECK(scopes_response.scopes[0].name == "Locals");
+    CHECK(scopes_response.scopes[0].variables_reference == 23);
+}
+
+TEST_CASE("CDapDebugSession returns variables from a variables response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"output","body":{"category":"console","output":"hello"}})",
+        R"({"type":"response","command":"variables","success":true,"body":{"variables":[{"name":"value","value":"42","type":"int","variablesReference":0}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto variables_response = dap_session.getVariables({
+        .variables_reference = 23,
+    });
+
+    REQUIRE(variables_response.success);
+    REQUIRE(variables_response.variables.size() == 1);
+    CHECK(variables_response.variables[0].name == "value");
+    CHECK(variables_response.variables[0].value == "42");
+    CHECK(variables_response.variables[0].type == "int");
+}
+
+TEST_CASE("CDapDebugSession resolves locals through stackTrace scopes and variables") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":1001,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}}]}})",
+        R"({"type":"response","command":"scopes","success":true,"body":{"scopes":[{"name":"Registers","variablesReference":11},{"name":"Locals","variablesReference":23}]}})",
+        R"({"type":"response","command":"variables","success":true,"body":{"variables":[{"name":"value","value":"42","type":"int","variablesReference":0},{"name":"ptr","value":"0x1000","type":"char *","variablesReference":0}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto locals = dap_session.getLocals({
+        .thread_id   = 1,
+        .frame_index = 0,
+    });
+
+    REQUIRE(locals.size() == 2);
+    CHECK(locals[0].name == "value");
+    CHECK(locals[0].value == "42");
+    CHECK(locals[0].type == "int");
+    CHECK(locals[1].name == "ptr");
+    CHECK(locals[1].value == "0x1000");
+    CHECK(locals[1].type == "char *");
 }

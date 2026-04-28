@@ -98,8 +98,19 @@ int main(int argc, char** argv) {
         std::cout << "stack_frames ok\n";
         std::cout << "stack_frame_count=" << stack_trace_response.stack_frames.size() << '\n';
         for (const auto& stack_frame : stack_trace_response.stack_frames) {
-            std::cout << "frame id=" << stack_frame.id << " name=" << stack_frame.name << " path=" << stack_frame.source_path
-                      << " line=" << stack_frame.line << " column=" << stack_frame.column << '\n';
+            std::cout << "frame id=" << stack_frame.id << " name=" << stack_frame.name << " path=" << stack_frame.source_path << " line=" << stack_frame.line
+                      << " column=" << stack_frame.column << '\n';
+        }
+
+        std::cerr << "probe: getLocals\n";
+        const auto locals = dap_session.getLocals({
+            .thread_id   = threads_response.threads.front().id,
+            .frame_index = 0,
+        });
+
+        std::cout << "locals_count=" << locals.size() << '\n';
+        for (const auto& local : locals) {
+            std::cout << "local name=" << local.name << " value=" << local.value << " type=" << local.type << '\n';
         }
     }
 

@@ -70,7 +70,7 @@ struct SDapStackTraceRequest {
 };
 
 struct SDapStackFrame {
-    int         id     = 0;
+    int         id = 0;
     std::string name;
     std::string source_path;
     int         line   = 0;
@@ -81,6 +81,38 @@ struct SDapStackTraceResponse {
     bool                        success = false;
     std::vector<SDapStackFrame> stack_frames;
     std::string                 error_message;
+};
+
+struct SDapScopesRequest {
+    int frame_id = 0;
+};
+
+struct SDapScope {
+    std::string name;
+    int         variables_reference = 0;
+};
+
+struct SDapScopesResponse {
+    bool                   success = false;
+    std::vector<SDapScope> scopes;
+    std::string            error_message;
+};
+
+struct SDapVariablesRequest {
+    int variables_reference = 0;
+};
+
+struct SDapVariable {
+    std::string name;
+    std::string value;
+    std::string type;
+    int         variables_reference = 0;
+};
+
+struct SDapVariablesResponse {
+    bool                      success = false;
+    std::vector<SDapVariable> variables;
+    std::string               error_message;
 };
 
 struct SDapLaunchRequest {
@@ -163,6 +195,10 @@ class CDapDebugSession : public IDebugSession {
     static SDapThreadsResponse           parseThreadsResponseMessage(const std::string& response_message);
     static std::string                   buildStackTraceRequestMessage(int sequence_number, const SDapStackTraceRequest& stack_trace_request);
     static SDapStackTraceResponse        parseStackTraceResponseMessage(const std::string& response_message);
+    static std::string                   buildScopesRequestMessage(int sequence_number, const SDapScopesRequest& scopes_request);
+    static SDapScopesResponse            parseScopesResponseMessage(const std::string& response_message);
+    static std::string                   buildVariablesRequestMessage(int sequence_number, const SDapVariablesRequest& variables_request);
+    static SDapVariablesResponse         parseVariablesResponseMessage(const std::string& response_message);
     static std::string                   buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request);
     static std::string                   buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request);
     static std::string                   buildConfigurationDoneRequestMessage(int sequence_number);
@@ -177,6 +213,8 @@ class CDapDebugSession : public IDebugSession {
     bool                                 waitForStoppedEvent();
     SDapThreadsResponse                  getThreads();
     SDapStackTraceResponse               getStackTrace(const SDapStackTraceRequest& stack_trace_request);
+    SDapScopesResponse                   getScopes(const SDapScopesRequest& scopes_request);
+    SDapVariablesResponse                getVariables(const SDapVariablesRequest& variables_request);
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);

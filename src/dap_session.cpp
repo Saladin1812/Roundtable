@@ -1,5 +1,6 @@
 #include "dap_session.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <iostream>
@@ -471,9 +472,17 @@ std::string CDapDebugSession::buildThreadsRequestMessage(int sequence_number) {
 }
 
 std::string CDapDebugSession::buildStackTraceRequestMessage(int sequence_number, const SDapStackTraceRequest& stack_trace_request) {
-    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"stackTrace","arguments":{"threadId":)" +
-        std::to_string(stack_trace_request.thread_id) + R"(,"startFrame":)" + std::to_string(stack_trace_request.start_frame) +
-        R"(,"levels":)" + std::to_string(stack_trace_request.levels) + "}}";
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"stackTrace","arguments":{"threadId":)" + std::to_string(stack_trace_request.thread_id) +
+        R"(,"startFrame":)" + std::to_string(stack_trace_request.start_frame) + R"(,"levels":)" + std::to_string(stack_trace_request.levels) + "}}";
+}
+
+std::string CDapDebugSession::buildScopesRequestMessage(int sequence_number, const SDapScopesRequest& scopes_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"scopes","arguments":{"frameId":)" + std::to_string(scopes_request.frame_id) + "}}";
+}
+
+std::string CDapDebugSession::buildVariablesRequestMessage(int sequence_number, const SDapVariablesRequest& variables_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"variables","arguments":{"variablesReference":)" +
+        std::to_string(variables_request.variables_reference) + "}}";
 }
 
 namespace {
@@ -492,6 +501,63 @@ namespace {
         }
 
         return response_message.substr(value_start, value_end - value_start);
+    }
+
+    std::optional<int> extractJsonIntegerField(const std::string& response_message, const std::string& field_name) {
+        const auto field_pattern = "\"" + field_name + "\":";
+        const auto field_start   = response_message.find(field_pattern);
+        if (field_start == std::string::npos) {
+            return std::nullopt;
+        }
+
+        const auto value_start = field_start + field_pattern.size();
+        const auto value_end   = response_message.find_first_not_of("0123456789", value_start);
+        if (value_end == value_start) {
+            return std::nullopt;
+        }
+
+        return std::stoi(response_message.substr(value_start, value_end - value_start));
+    }
+
+    std::vector<std::string> extractTopLevelObjectsFromArray(const std::string& response_message, const std::string& array_name) {
+        std::vector<std::string> objects;
+
+        const auto               array_position = response_message.find("\"" + array_name + "\":[");
+        if (array_position == std::string::npos) {
+            return objects;
+        }
+
+        const auto array_start = response_message.find('[', array_position);
+        if (array_start == std::string::npos) {
+            return objects;
+        }
+
+        std::size_t search_position = array_start + 1;
+        int         object_depth    = 0;
+        std::size_t object_start    = std::string::npos;
+
+        while (search_position < response_message.size()) {
+            const char current_character = response_message[search_position];
+
+            if (current_character == '{') {
+                if (object_depth == 0) {
+                    object_start = search_position;
+                }
+                ++object_depth;
+            } else if (current_character == '}') {
+                --object_depth;
+                if (object_depth == 0 && object_start != std::string::npos) {
+                    objects.push_back(response_message.substr(object_start, search_position - object_start + 1));
+                    object_start = std::string::npos;
+                }
+            } else if (current_character == ']' && object_depth == 0) {
+                break;
+            }
+
+            ++search_position;
+        }
+
+        return objects;
     }
 
     int decodeBase64Value(char character) {
@@ -648,7 +714,7 @@ SDapStackTraceResponse CDapDebugSession::parseStackTraceResponseMessage(const st
                 const std::string frame_message = response_message.substr(object_start, search_position - object_start + 1);
                 SDapStackFrame    stack_frame   = {};
 
-                const auto id_position = frame_message.find("\"id\":");
+                const auto        id_position = frame_message.find("\"id\":");
                 if (id_position != std::string::npos) {
                     const auto id_value_start = id_position + std::string("\"id\":").size();
                     const auto id_value_end   = frame_message.find_first_not_of("0123456789", id_value_start);
@@ -698,6 +764,78 @@ SDapStackTraceResponse CDapDebugSession::parseStackTraceResponseMessage(const st
         }
 
         ++search_position;
+    }
+
+    return response;
+}
+
+SDapScopesResponse CDapDebugSession::parseScopesResponseMessage(const std::string& response_message) {
+    SDapScopesResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP scopes response did not report success";
+        return response;
+    }
+
+    response.success = true;
+
+    for (const auto& scope_message : extractTopLevelObjectsFromArray(response_message, "scopes")) {
+        SDapScope  scope = {};
+
+        const auto name = extractJsonStringField(scope_message, "name");
+        if (name.has_value()) {
+            scope.name = name.value();
+        }
+
+        const auto variables_reference = extractJsonIntegerField(scope_message, "variablesReference");
+        if (variables_reference.has_value()) {
+            scope.variables_reference = variables_reference.value();
+        }
+
+        if (!scope.name.empty() || scope.variables_reference != 0) {
+            response.scopes.push_back(std::move(scope));
+        }
+    }
+
+    return response;
+}
+
+SDapVariablesResponse CDapDebugSession::parseVariablesResponseMessage(const std::string& response_message) {
+    SDapVariablesResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP variables response did not report success";
+        return response;
+    }
+
+    response.success = true;
+
+    for (const auto& variable_message : extractTopLevelObjectsFromArray(response_message, "variables")) {
+        SDapVariable variable = {};
+
+        const auto   name = extractJsonStringField(variable_message, "name");
+        if (name.has_value()) {
+            variable.name = name.value();
+        }
+
+        const auto value = extractJsonStringField(variable_message, "value");
+        if (value.has_value()) {
+            variable.value = value.value();
+        }
+
+        const auto type = extractJsonStringField(variable_message, "type");
+        if (type.has_value()) {
+            variable.type = type.value();
+        }
+
+        const auto variables_reference = extractJsonIntegerField(variable_message, "variablesReference");
+        if (variables_reference.has_value()) {
+            variable.variables_reference = variables_reference.value();
+        }
+
+        if (!variable.name.empty()) {
+            response.variables.push_back(std::move(variable));
+        }
     }
 
     return response;
@@ -1047,6 +1185,92 @@ SDapStackTraceResponse CDapDebugSession::getStackTrace(const SDapStackTraceReque
     }
 }
 
+SDapScopesResponse CDapDebugSession::getScopes(const SDapScopesRequest& scopes_request) {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .scopes        = {},
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildScopesRequestMessage(next_sequence_number_++, scopes_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .scopes        = {},
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .scopes        = {},
+                .error_message = error_message,
+            };
+        }
+
+        std::cerr << "dap scopes message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "scopes") {
+            return parseScopesResponseMessage(response_message);
+        }
+    }
+}
+
+SDapVariablesResponse CDapDebugSession::getVariables(const SDapVariablesRequest& variables_request) {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .variables     = {},
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildVariablesRequestMessage(next_sequence_number_++, variables_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .variables     = {},
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .variables     = {},
+                .error_message = error_message,
+            };
+        }
+
+        std::cerr << "dap variables message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "variables") {
+            return parseVariablesResponseMessage(response_message);
+        }
+    }
+}
+
 bool CDapDebugSession::isConnected() const {
     return transport_ != nullptr && transport_->isConnected();
 }
@@ -1064,8 +1288,54 @@ SDebugCapabilities CDapDebugSession::getCapabilities() {
 }
 
 std::vector<SLocalVariable> CDapDebugSession::getLocals(const SDebugSelection& selection) {
-    static_cast<void>(selection);
-    return {};
+    if (!isConnected()) {
+        return {};
+    }
+
+    const auto stack_trace_response = getStackTrace({
+        .thread_id   = static_cast<int>(selection.thread_id),
+        .start_frame = selection.frame_index,
+        .levels      = 1,
+    });
+
+    if (!stack_trace_response.success || stack_trace_response.stack_frames.empty()) {
+        return {};
+    }
+
+    const auto scopes_response = getScopes({
+        .frame_id = stack_trace_response.stack_frames.front().id,
+    });
+
+    if (!scopes_response.success || scopes_response.scopes.empty()) {
+        return {};
+    }
+
+    const auto  locals_scope_iterator = std::find_if(scopes_response.scopes.begin(), scopes_response.scopes.end(), [](const SDapScope& scope) { return scope.name == "Locals"; });
+
+    const auto& selected_scope = locals_scope_iterator != scopes_response.scopes.end() ? *locals_scope_iterator : scopes_response.scopes.front();
+    if (selected_scope.variables_reference == 0) {
+        return {};
+    }
+
+    const auto variables_response = getVariables({
+        .variables_reference = selected_scope.variables_reference,
+    });
+
+    if (!variables_response.success) {
+        return {};
+    }
+
+    std::vector<SLocalVariable> locals;
+    locals.reserve(variables_response.variables.size());
+    for (const auto& variable : variables_response.variables) {
+        locals.push_back({
+            .name  = variable.name,
+            .value = variable.value,
+            .type  = variable.type,
+        });
+    }
+
+    return locals;
 }
 
 SMemoryReadResult CDapDebugSession::readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) {
