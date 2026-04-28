@@ -829,11 +829,15 @@ SDapEvaluateResponse CDapDebugSession::parseEvaluateResponseMessage(const std::s
     SDapEvaluateResponse response = {};
 
     if (response_message.find("\"success\":true") == std::string::npos) {
-        response.error_message = "DAP evaluate response did not report success";
+        const auto adapter_message = extractJsonStringField(response_message, "message");
+        response.error_message     = adapter_message.has_value() ? adapter_message.value() : "DAP evaluate response did not report success";
         return response;
     }
 
-    const auto result = extractJsonStringField(response_message, "result");
+    const auto body_position = response_message.find(R"("body":{)");
+    const auto body_message  = body_position == std::string::npos ? response_message : response_message.substr(body_position);
+
+    const auto result = extractJsonStringField(body_message, "result");
     if (!result.has_value()) {
         response.error_message = "DAP evaluate response did not include result";
         return response;
@@ -842,7 +846,7 @@ SDapEvaluateResponse CDapDebugSession::parseEvaluateResponseMessage(const std::s
     response.success = true;
     response.result  = result.value();
 
-    const auto type = extractJsonStringField(response_message, "type");
+    const auto type = extractJsonStringField(body_message, "type");
     if (type.has_value()) {
         response.type = type.value();
     }
@@ -1369,7 +1373,7 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
             continue;
         }
 
-        if (message.type == "response" && message.command_name == "evaluate") {
+        if (message.type == "response" && (message.command_name == "evaluate" || message.command_name.empty())) {
             return parseEvaluateResponseMessage(response_message);
         }
     }

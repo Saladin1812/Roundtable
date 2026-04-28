@@ -427,6 +427,14 @@ TEST_CASE("CDapDebugSession parses an evaluate response message") {
     CHECK(response.error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession parses a failed evaluate response message") {
+    const SDapEvaluateResponse response =
+        CDapDebugSession::parseEvaluateResponseMessage(R"({"success":false,"command":"","message":"error: use of undeclared identifier 'sample_value'"})");
+
+    CHECK_FALSE(response.success);
+    CHECK(response.error_message == "error: use of undeclared identifier 'sample_value'");
+}
+
 TEST_CASE("CDapDebugSession builds a launch request message") {
     const std::string request_message = CDapDebugSession::buildLaunchRequestMessage(9,
                                                                                     {

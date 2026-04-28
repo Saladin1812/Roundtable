@@ -126,24 +126,29 @@ int main(int argc, char** argv) {
             std::cout << "local name=" << local.name << " value=" << local.value << " type=" << local.type << '\n';
         }
 
-        std::cerr << "probe: evaluateWatches\n";
-        const auto watch_results = dap_session.evaluateWatches(
-            {
-                .thread_id   = threads_response.threads.front().id,
-                .frame_index = selected_frame_index,
-            },
-            {
-                {.expression = "sample_value"},
-                {.expression = "sample_bytes"},
-            });
+        const bool should_continue_to_user_frame =
+            !stack_trace_response.stack_frames.empty() && (stack_trace_response.stack_frames.front().name.find("_start") != std::string::npos || locals.empty());
 
-        std::cout << "watch_count=" << watch_results.size() << '\n';
-        for (const auto& watch_result : watch_results) {
-            std::cout << "watch expression=" << watch_result.expression << " value=" << watch_result.value << " type=" << watch_result.type
-                      << " error=" << watch_result.error_message << '\n';
+        if (!should_continue_to_user_frame) {
+            std::cerr << "probe: evaluateWatches\n";
+            const auto watch_results = dap_session.evaluateWatches(
+                {
+                    .thread_id   = threads_response.threads.front().id,
+                    .frame_index = selected_frame_index,
+                },
+                {
+                    {.expression = "sample_value"},
+                    {.expression = "sample_bytes"},
+                });
+
+            std::cout << "watch_count=" << watch_results.size() << '\n';
+            for (const auto& watch_result : watch_results) {
+                std::cout << "watch expression=" << watch_result.expression << " value=" << watch_result.value << " type=" << watch_result.type
+                          << " error=" << watch_result.error_message << '\n';
+            }
         }
 
-        if (!stack_trace_response.stack_frames.empty() && (stack_trace_response.stack_frames.front().name.find("_start") != std::string::npos || locals.empty())) {
+        if (should_continue_to_user_frame) {
             std::cerr << "probe: continue\n";
             const auto continue_response = dap_session.continueExecution({
                 .thread_id = threads_response.threads.front().id,
