@@ -448,6 +448,10 @@ std::string CDapDebugSession::buildVariablesRequestMessage(int sequence_number, 
         std::to_string(variables_request.variables_reference) + "}}";
 }
 
+std::string CDapDebugSession::buildContinueRequestMessage(int sequence_number, const SDapContinueRequest& continue_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"continue","arguments":{"threadId":)" + std::to_string(continue_request.thread_id) + "}}";
+}
+
 namespace {
 
     std::optional<std::string> extractJsonStringField(const std::string& response_message, const std::string& field_name) {
@@ -801,6 +805,18 @@ SDapVariablesResponse CDapDebugSession::parseVariablesResponseMessage(const std:
         }
     }
 
+    return response;
+}
+
+SDapContinueResponse CDapDebugSession::parseContinueResponseMessage(const std::string& response_message) {
+    SDapContinueResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP continue response did not report success";
+        return response;
+    }
+
+    response.success = true;
     return response;
 }
 
@@ -1230,6 +1246,46 @@ SDapVariablesResponse CDapDebugSession::getVariables(const SDapVariablesRequest&
 
         if (message.type == "response" && message.command_name == "variables") {
             return parseVariablesResponseMessage(response_message);
+        }
+    }
+}
+
+SDapContinueResponse CDapDebugSession::continueExecution(const SDapContinueRequest& continue_request) {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildContinueRequestMessage(next_sequence_number_++, continue_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .error_message = error_message,
+            };
+        }
+
+        std::cerr << "dap continue message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "continue") {
+            return parseContinueResponseMessage(response_message);
         }
     }
 }

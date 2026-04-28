@@ -1,5 +1,6 @@
 #include <iostream>
 #include <memory>
+#include <functional>
 #include <string_view>
 
 #include "dap_session.hpp"
@@ -69,20 +70,24 @@ int main(int argc, char** argv) {
         return 5;
     }
 
-    std::cerr << "probe: getThreads\n";
-    const auto threads_response = dap_session.getThreads();
-    if (!threads_response.success) {
-        std::cerr << "getThreads failed: " << threads_response.error_message << '\n';
-        return 6;
-    }
+    std::function<int(int)> query_stopped_state = [&](int result_base_code) -> int {
+        std::cerr << "probe: getThreads\n";
+        const auto threads_response = dap_session.getThreads();
+        if (!threads_response.success) {
+            std::cerr << "getThreads failed: " << threads_response.error_message << '\n';
+            return result_base_code;
+        }
 
-    std::cout << "threads ok\n";
-    std::cout << "thread_count=" << threads_response.threads.size() << '\n';
-    for (const auto& thread : threads_response.threads) {
-        std::cout << "thread id=" << thread.id << " name=" << thread.name << '\n';
-    }
+        std::cout << "threads ok\n";
+        std::cout << "thread_count=" << threads_response.threads.size() << '\n';
+        for (const auto& thread : threads_response.threads) {
+            std::cout << "thread id=" << thread.id << " name=" << thread.name << '\n';
+        }
 
-    if (!threads_response.threads.empty()) {
+        if (threads_response.threads.empty()) {
+            return 0;
+        }
+
         std::cerr << "probe: getStackTrace\n";
         const auto stack_trace_response = dap_session.getStackTrace({
             .thread_id   = threads_response.threads.front().id,
@@ -92,7 +97,7 @@ int main(int argc, char** argv) {
 
         if (!stack_trace_response.success) {
             std::cerr << "getStackTrace failed: " << stack_trace_response.error_message << '\n';
-            return 7;
+            return result_base_code + 1;
         }
 
         std::cout << "stack_frames ok\n";
@@ -102,16 +107,51 @@ int main(int argc, char** argv) {
                       << " column=" << stack_frame.column << '\n';
         }
 
+        std::size_t selected_frame_index = 0;
+        for (std::size_t frame_index = 0; frame_index < stack_trace_response.stack_frames.size(); ++frame_index) {
+            if (stack_trace_response.stack_frames[frame_index].name == "main") {
+                selected_frame_index = frame_index;
+                break;
+            }
+        }
+
         std::cerr << "probe: getLocals\n";
         const auto locals = dap_session.getLocals({
             .thread_id   = threads_response.threads.front().id,
-            .frame_index = 0,
+            .frame_index = selected_frame_index,
         });
 
         std::cout << "locals_count=" << locals.size() << '\n';
         for (const auto& local : locals) {
             std::cout << "local name=" << local.name << " value=" << local.value << " type=" << local.type << '\n';
         }
+
+        if (!stack_trace_response.stack_frames.empty() && (stack_trace_response.stack_frames.front().name.find("_start") != std::string::npos || locals.empty())) {
+            std::cerr << "probe: continue\n";
+            const auto continue_response = dap_session.continueExecution({
+                .thread_id = threads_response.threads.front().id,
+            });
+
+            if (!continue_response.success) {
+                std::cerr << "continueExecution failed: " << continue_response.error_message << '\n';
+                return result_base_code + 2;
+            }
+
+            std::cerr << "probe: waitForStoppedEvent\n";
+            if (!dap_session.waitForStoppedEvent()) {
+                std::cerr << "waitForStoppedEvent failed: " << dap_session.getLastError() << '\n';
+                return result_base_code + 3;
+            }
+
+            return query_stopped_state(result_base_code + 4);
+        }
+
+        return 0;
+    };
+
+    const int query_result = query_stopped_state(6);
+    if (query_result != 0) {
+        return query_result;
     }
 
     const auto capabilities = dap_session.getCapabilities();

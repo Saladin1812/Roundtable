@@ -385,6 +385,24 @@ TEST_CASE("CDapDebugSession parses a variables response message") {
     CHECK(response.variables[1].variables_reference == 7);
 }
 
+TEST_CASE("CDapDebugSession builds a continue request message") {
+    const std::string request_message = CDapDebugSession::buildContinueRequestMessage(15,
+                                                                                      {
+                                                                                          .thread_id = 13,
+                                                                                      });
+
+    CHECK(request_message.find("\"seq\":15") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"continue\"") != std::string::npos);
+    CHECK(request_message.find("\"threadId\":13") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a continue response message") {
+    const SDapContinueResponse response = CDapDebugSession::parseContinueResponseMessage(R"({"success":true,"body":{"allThreadsContinued":true}})");
+
+    REQUIRE(response.success);
+    CHECK(response.error_message.empty());
+}
+
 TEST_CASE("CDapDebugSession builds a launch request message") {
     const std::string request_message = CDapDebugSession::buildLaunchRequestMessage(9,
                                                                                     {
@@ -562,6 +580,24 @@ TEST_CASE("CDapDebugSession returns variables from a variables response") {
     CHECK(variables_response.variables[0].name == "value");
     CHECK(variables_response.variables[0].value == "42");
     CHECK(variables_response.variables[0].type == "int");
+}
+
+TEST_CASE("CDapDebugSession continues execution from a continue response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"continued","body":{"threadId":13}})",
+        R"({"type":"response","command":"continue","success":true,"body":{"allThreadsContinued":true}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto continue_response = dap_session.continueExecution({
+        .thread_id = 13,
+    });
+
+    REQUIRE(continue_response.success);
+    CHECK(continue_response.error_message.empty());
 }
 
 TEST_CASE("CDapDebugSession resolves locals through stackTrace scopes and variables") {

@@ -115,6 +115,15 @@ struct SDapVariablesResponse {
     std::string               error_message;
 };
 
+struct SDapContinueRequest {
+    int thread_id = 0;
+};
+
+struct SDapContinueResponse {
+    bool        success = false;
+    std::string error_message;
+};
+
 struct SDapLaunchRequest {
     std::string              program;
     std::vector<std::string> arguments;
@@ -201,6 +210,8 @@ class CDapDebugSession : public IDebugSession {
     static SDapScopesResponse            parseScopesResponseMessage(const std::string& response_message);
     static std::string                   buildVariablesRequestMessage(int sequence_number, const SDapVariablesRequest& variables_request);
     static SDapVariablesResponse         parseVariablesResponseMessage(const std::string& response_message);
+    static std::string                   buildContinueRequestMessage(int sequence_number, const SDapContinueRequest& continue_request);
+    static SDapContinueResponse          parseContinueResponseMessage(const std::string& response_message);
     static std::string                   buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request);
     static std::string                   buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request);
     static std::string                   buildConfigurationDoneRequestMessage(int sequence_number);
@@ -217,6 +228,7 @@ class CDapDebugSession : public IDebugSession {
     SDapStackTraceResponse               getStackTrace(const SDapStackTraceRequest& stack_trace_request);
     SDapScopesResponse                   getScopes(const SDapScopesRequest& scopes_request);
     SDapVariablesResponse                getVariables(const SDapVariablesRequest& variables_request);
+    SDapContinueResponse                 continueExecution(const SDapContinueRequest& continue_request);
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);
