@@ -452,6 +452,11 @@ std::string CDapDebugSession::buildContinueRequestMessage(int sequence_number, c
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"continue","arguments":{"threadId":)" + std::to_string(continue_request.thread_id) + "}}";
 }
 
+std::string CDapDebugSession::buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"evaluate","arguments":{"expression":")" + evaluate_request.expression +
+        R"(","frameId":)" + std::to_string(evaluate_request.frame_id) + R"(,"context":")" + evaluate_request.context + R"("}})";
+}
+
 namespace {
 
     std::optional<std::string> extractJsonStringField(const std::string& response_message, const std::string& field_name) {
@@ -817,6 +822,31 @@ SDapContinueResponse CDapDebugSession::parseContinueResponseMessage(const std::s
     }
 
     response.success = true;
+    return response;
+}
+
+SDapEvaluateResponse CDapDebugSession::parseEvaluateResponseMessage(const std::string& response_message) {
+    SDapEvaluateResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP evaluate response did not report success";
+        return response;
+    }
+
+    const auto result = extractJsonStringField(response_message, "result");
+    if (!result.has_value()) {
+        response.error_message = "DAP evaluate response did not include result";
+        return response;
+    }
+
+    response.success = true;
+    response.result  = result.value();
+
+    const auto type = extractJsonStringField(response_message, "type");
+    if (type.has_value()) {
+        response.type = type.value();
+    }
+
     return response;
 }
 
@@ -1290,6 +1320,61 @@ SDapContinueResponse CDapDebugSession::continueExecution(const SDapContinueReque
     }
 }
 
+SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evaluate_request) {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .result        = "",
+            .type          = "",
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    if (!adapter_capabilities_.supports_evaluate) {
+        return {
+            .success       = false,
+            .result        = "",
+            .type          = "",
+            .error_message = "DAP adapter does not support evaluate",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildEvaluateRequestMessage(next_sequence_number_++, evaluate_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .result        = "",
+            .type          = "",
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .result        = "",
+                .type          = "",
+                .error_message = error_message,
+            };
+        }
+
+        std::cerr << "dap evaluate message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "evaluate") {
+            return parseEvaluateResponseMessage(response_message);
+        }
+    }
+}
+
 bool CDapDebugSession::isConnected() const {
     return transport_ != nullptr && transport_->isConnected();
 }
@@ -1428,19 +1513,68 @@ SMemoryReadResult CDapDebugSession::readMemory(const SDebugSelection& selection,
 }
 
 std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) {
-    static_cast<void>(selection);
-
     std::vector<SWatchResult> watch_results;
     watch_results.reserve(watch_expressions.size());
 
-    const std::string error_message = isConnected() ? "DAP watch evaluation is not implemented yet" : "DAP session is not connected";
+    if (!isConnected()) {
+        for (const auto& watch_expression : watch_expressions) {
+            watch_results.push_back({
+                .expression    = watch_expression.expression,
+                .value         = "",
+                .type          = "",
+                .error_message = "DAP session is not connected",
+            });
+        }
+
+        return watch_results;
+    }
+
+    if (!adapter_capabilities_.supports_evaluate) {
+        for (const auto& watch_expression : watch_expressions) {
+            watch_results.push_back({
+                .expression    = watch_expression.expression,
+                .value         = "",
+                .type          = "",
+                .error_message = "DAP adapter does not support evaluate",
+            });
+        }
+
+        return watch_results;
+    }
+
+    const auto stack_trace_response = getStackTrace({
+        .thread_id   = static_cast<int>(selection.thread_id),
+        .start_frame = 0,
+        .levels      = selection.frame_index + 1,
+    });
+
+    if (!stack_trace_response.success || stack_trace_response.stack_frames.size() <= selection.frame_index) {
+        for (const auto& watch_expression : watch_expressions) {
+            watch_results.push_back({
+                .expression    = watch_expression.expression,
+                .value         = "",
+                .type          = "",
+                .error_message = stack_trace_response.success ? "DAP stackTrace did not include requested frame" : stack_trace_response.error_message,
+            });
+        }
+
+        return watch_results;
+    }
+
+    const int frame_id = stack_trace_response.stack_frames[selection.frame_index].id;
 
     for (const auto& watch_expression : watch_expressions) {
+        const auto evaluate_response = evaluate({
+            .expression = watch_expression.expression,
+            .frame_id   = frame_id,
+            .context    = "watch",
+        });
+
         watch_results.push_back({
             .expression    = watch_expression.expression,
-            .value         = "",
-            .type          = "",
-            .error_message = error_message,
+            .value         = evaluate_response.result,
+            .type          = evaluate_response.type,
+            .error_message = evaluate_response.success ? "" : evaluate_response.error_message,
         });
     }
 

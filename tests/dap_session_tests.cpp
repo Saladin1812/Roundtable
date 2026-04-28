@@ -403,6 +403,30 @@ TEST_CASE("CDapDebugSession parses a continue response message") {
     CHECK(response.error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession builds an evaluate request message") {
+    const std::string request_message = CDapDebugSession::buildEvaluateRequestMessage(16,
+                                                                                      {
+                                                                                          .expression = "sample_value",
+                                                                                          .frame_id   = 1014,
+                                                                                          .context    = "watch",
+                                                                                      });
+
+    CHECK(request_message.find("\"seq\":16") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"evaluate\"") != std::string::npos);
+    CHECK(request_message.find("\"expression\":\"sample_value\"") != std::string::npos);
+    CHECK(request_message.find("\"frameId\":1014") != std::string::npos);
+    CHECK(request_message.find("\"context\":\"watch\"") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses an evaluate response message") {
+    const SDapEvaluateResponse response = CDapDebugSession::parseEvaluateResponseMessage(R"({"success":true,"body":{"result":"42","type":"const int","variablesReference":0}})");
+
+    REQUIRE(response.success);
+    CHECK(response.result == "42");
+    CHECK(response.type == "const int");
+    CHECK(response.error_message.empty());
+}
+
 TEST_CASE("CDapDebugSession builds a launch request message") {
     const std::string request_message = CDapDebugSession::buildLaunchRequestMessage(9,
                                                                                     {
@@ -600,6 +624,34 @@ TEST_CASE("CDapDebugSession continues execution from a continue response") {
     CHECK(continue_response.error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession evaluates an expression from an evaluate response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"output","body":{"category":"console","output":"hello"}})",
+        R"({"type":"response","command":"evaluate","success":true,"body":{"result":"42","type":"const int","variablesReference":0}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+    dap_session.setAdapterCapabilities({
+        .supports_read_memory      = false,
+        .supports_write_memory     = false,
+        .supports_evaluate         = true,
+        .supports_disassemble      = false,
+        .supports_data_breakpoints = false,
+    });
+
+    REQUIRE(dap_session.connect());
+    const auto evaluate_response = dap_session.evaluate({
+        .expression = "sample_value",
+        .frame_id   = 1014,
+        .context    = "watch",
+    });
+
+    REQUIRE(evaluate_response.success);
+    CHECK(evaluate_response.result == "42");
+    CHECK(evaluate_response.type == "const int");
+}
+
 TEST_CASE("CDapDebugSession resolves locals through stackTrace scopes and variables") {
     auto transport = std::make_unique<CStubDapTransport>(true);
     transport->setReadMessages({
@@ -623,6 +675,44 @@ TEST_CASE("CDapDebugSession resolves locals through stackTrace scopes and variab
     CHECK(locals[1].name == "ptr");
     CHECK(locals[1].value == "0x1000");
     CHECK(locals[1].type == "char *");
+}
+
+TEST_CASE("CDapDebugSession evaluates watch expressions through stackTrace and evaluate") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":1014,"name":"main","line":13,"column":5,"source":{"path":"/tmp/sample.cpp"}}]}})",
+        R"({"type":"response","command":"evaluate","success":true,"body":{"result":"42","type":"const int","variablesReference":0}})",
+        R"({"type":"response","command":"evaluate","success":true,"body":{"result":"{_M_elems:\"Hello!\\0A\"}","type":"volatile std::array<unsigned char, 8>","variablesReference":1019}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+    dap_session.setAdapterCapabilities({
+        .supports_read_memory      = false,
+        .supports_write_memory     = false,
+        .supports_evaluate         = true,
+        .supports_disassemble      = false,
+        .supports_data_breakpoints = false,
+    });
+
+    REQUIRE(dap_session.connect());
+    const auto watch_results = dap_session.evaluateWatches(
+        {
+            .thread_id   = 19,
+            .frame_index = 0,
+        },
+        {
+            {.expression = "sample_value"},
+            {.expression = "sample_bytes"},
+        });
+
+    REQUIRE(watch_results.size() == 2);
+    CHECK(watch_results[0].expression == "sample_value");
+    CHECK(watch_results[0].value == "42");
+    CHECK(watch_results[0].type == "const int");
+    CHECK(watch_results[0].error_message.empty());
+    CHECK(watch_results[1].expression == "sample_bytes");
+    CHECK(watch_results[1].type == "volatile std::array<unsigned char, 8>");
+    CHECK(watch_results[1].error_message.empty());
 }
 
 TEST_CASE("CDapDebugSession resolves locals from the selected nonzero frame index") {
