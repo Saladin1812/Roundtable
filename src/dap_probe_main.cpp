@@ -82,6 +82,27 @@ int main(int argc, char** argv) {
         std::cout << "thread id=" << thread.id << " name=" << thread.name << '\n';
     }
 
+    if (!threads_response.threads.empty()) {
+        std::cerr << "probe: getStackTrace\n";
+        const auto stack_trace_response = dap_session.getStackTrace({
+            .thread_id   = threads_response.threads.front().id,
+            .start_frame = 0,
+            .levels      = 10,
+        });
+
+        if (!stack_trace_response.success) {
+            std::cerr << "getStackTrace failed: " << stack_trace_response.error_message << '\n';
+            return 7;
+        }
+
+        std::cout << "stack_frames ok\n";
+        std::cout << "stack_frame_count=" << stack_trace_response.stack_frames.size() << '\n';
+        for (const auto& stack_frame : stack_trace_response.stack_frames) {
+            std::cout << "frame id=" << stack_frame.id << " name=" << stack_frame.name << " path=" << stack_frame.source_path
+                      << " line=" << stack_frame.line << " column=" << stack_frame.column << '\n';
+        }
+    }
+
     const auto capabilities = dap_session.getCapabilities();
     std::cout << "initialize ok\n";
     std::cout << "supports_memory_read=" << capabilities.supports_memory_read << '\n';

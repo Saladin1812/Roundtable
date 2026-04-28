@@ -470,6 +470,12 @@ std::string CDapDebugSession::buildThreadsRequestMessage(int sequence_number) {
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"threads","arguments":{}})";
 }
 
+std::string CDapDebugSession::buildStackTraceRequestMessage(int sequence_number, const SDapStackTraceRequest& stack_trace_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"stackTrace","arguments":{"threadId":)" +
+        std::to_string(stack_trace_request.thread_id) + R"(,"startFrame":)" + std::to_string(stack_trace_request.start_frame) +
+        R"(,"levels":)" + std::to_string(stack_trace_request.levels) + "}}";
+}
+
 namespace {
 
     std::optional<std::string> extractJsonStringField(const std::string& response_message, const std::string& field_name) {
@@ -599,6 +605,99 @@ SDapThreadsResponse CDapDebugSession::parseThreadsResponseMessage(const std::str
         }
 
         response.threads.push_back(std::move(thread));
+    }
+
+    return response;
+}
+
+SDapStackTraceResponse CDapDebugSession::parseStackTraceResponseMessage(const std::string& response_message) {
+    SDapStackTraceResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP stackTrace response did not report success";
+        return response;
+    }
+
+    response.success = true;
+
+    const auto stack_frames_position = response_message.find(R"("stackFrames":[)");
+    if (stack_frames_position == std::string::npos) {
+        return response;
+    }
+
+    const auto stack_frames_start = response_message.find('[', stack_frames_position);
+    if (stack_frames_start == std::string::npos) {
+        return response;
+    }
+
+    std::size_t search_position = stack_frames_start + 1;
+    int         object_depth    = 0;
+    std::size_t object_start    = std::string::npos;
+
+    while (search_position < response_message.size()) {
+        const char current_character = response_message[search_position];
+
+        if (current_character == '{') {
+            if (object_depth == 0) {
+                object_start = search_position;
+            }
+            ++object_depth;
+        } else if (current_character == '}') {
+            --object_depth;
+            if (object_depth == 0 && object_start != std::string::npos) {
+                const std::string frame_message = response_message.substr(object_start, search_position - object_start + 1);
+                SDapStackFrame    stack_frame   = {};
+
+                const auto id_position = frame_message.find("\"id\":");
+                if (id_position != std::string::npos) {
+                    const auto id_value_start = id_position + std::string("\"id\":").size();
+                    const auto id_value_end   = frame_message.find_first_not_of("0123456789", id_value_start);
+                    stack_frame.id            = std::stoi(frame_message.substr(id_value_start, id_value_end - id_value_start));
+                }
+
+                const auto name_position = frame_message.find(R"("name":")");
+                if (name_position != std::string::npos) {
+                    const auto name_value_start = name_position + std::string(R"("name":")").size();
+                    const auto name_value_end   = frame_message.find('"', name_value_start);
+                    if (name_value_end != std::string::npos) {
+                        stack_frame.name = frame_message.substr(name_value_start, name_value_end - name_value_start);
+                    }
+                }
+
+                const auto line_position = frame_message.find("\"line\":");
+                if (line_position != std::string::npos) {
+                    const auto line_value_start = line_position + std::string("\"line\":").size();
+                    const auto line_value_end   = frame_message.find_first_not_of("0123456789", line_value_start);
+                    stack_frame.line            = std::stoi(frame_message.substr(line_value_start, line_value_end - line_value_start));
+                }
+
+                const auto column_position = frame_message.find("\"column\":");
+                if (column_position != std::string::npos) {
+                    const auto column_value_start = column_position + std::string("\"column\":").size();
+                    const auto column_value_end   = frame_message.find_first_not_of("0123456789", column_value_start);
+                    stack_frame.column            = std::stoi(frame_message.substr(column_value_start, column_value_end - column_value_start));
+                }
+
+                const auto path_position = frame_message.find(R"("path":")");
+                if (path_position != std::string::npos) {
+                    const auto path_value_start = path_position + std::string(R"("path":")").size();
+                    const auto path_value_end   = frame_message.find('"', path_value_start);
+                    if (path_value_end != std::string::npos) {
+                        stack_frame.source_path = frame_message.substr(path_value_start, path_value_end - path_value_start);
+                    }
+                }
+
+                if (stack_frame.id != 0 || !stack_frame.name.empty()) {
+                    response.stack_frames.push_back(std::move(stack_frame));
+                }
+
+                object_start = std::string::npos;
+            }
+        } else if (current_character == ']' && object_depth == 0) {
+            break;
+        }
+
+        ++search_position;
     }
 
     return response;
@@ -901,6 +1000,49 @@ SDapThreadsResponse CDapDebugSession::getThreads() {
 
         if (message.type == "response" && message.command_name == "threads") {
             return parseThreadsResponseMessage(response_message);
+        }
+    }
+}
+
+SDapStackTraceResponse CDapDebugSession::getStackTrace(const SDapStackTraceRequest& stack_trace_request) {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .stack_frames  = {},
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildStackTraceRequestMessage(next_sequence_number_++, stack_trace_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .stack_frames  = {},
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .stack_frames  = {},
+                .error_message = error_message,
+            };
+        }
+
+        std::cerr << "dap stackTrace message: " << response_message << '\n';
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "stackTrace") {
+            return parseStackTraceResponseMessage(response_message);
         }
     }
 }

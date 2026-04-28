@@ -63,6 +63,26 @@ struct SDapThreadsResponse {
     std::string             error_message;
 };
 
+struct SDapStackTraceRequest {
+    int         thread_id   = 0;
+    std::size_t start_frame = 0;
+    std::size_t levels      = 20;
+};
+
+struct SDapStackFrame {
+    int         id     = 0;
+    std::string name;
+    std::string source_path;
+    int         line   = 0;
+    int         column = 0;
+};
+
+struct SDapStackTraceResponse {
+    bool                        success = false;
+    std::vector<SDapStackFrame> stack_frames;
+    std::string                 error_message;
+};
+
 struct SDapLaunchRequest {
     std::string              program;
     std::vector<std::string> arguments;
@@ -141,6 +161,8 @@ class CDapDebugSession : public IDebugSession {
     static SDapReadMemoryResponse        parseReadMemoryResponseMessage(const std::string& response_message);
     static std::string                   buildThreadsRequestMessage(int sequence_number);
     static SDapThreadsResponse           parseThreadsResponseMessage(const std::string& response_message);
+    static std::string                   buildStackTraceRequestMessage(int sequence_number, const SDapStackTraceRequest& stack_trace_request);
+    static SDapStackTraceResponse        parseStackTraceResponseMessage(const std::string& response_message);
     static std::string                   buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request);
     static std::string                   buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request);
     static std::string                   buildConfigurationDoneRequestMessage(int sequence_number);
@@ -154,6 +176,7 @@ class CDapDebugSession : public IDebugSession {
     bool                                 sendConfigurationDoneRequest();
     bool                                 waitForStoppedEvent();
     SDapThreadsResponse                  getThreads();
+    SDapStackTraceResponse               getStackTrace(const SDapStackTraceRequest& stack_trace_request);
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);

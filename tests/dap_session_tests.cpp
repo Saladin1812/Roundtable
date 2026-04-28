@@ -286,6 +286,53 @@ TEST_CASE("CDapDebugSession parses a threads response message") {
     CHECK(response.threads[1].name == "worker");
 }
 
+TEST_CASE("CDapDebugSession builds a stackTrace request message") {
+    const std::string request_message = CDapDebugSession::buildStackTraceRequestMessage(12,
+                                                                                         {
+                                                                                             .thread_id   = 42,
+                                                                                             .start_frame = 0,
+                                                                                             .levels      = 10,
+                                                                                         });
+
+    CHECK(request_message.find("\"seq\":12") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"stackTrace\"") != std::string::npos);
+    CHECK(request_message.find("\"threadId\":42") != std::string::npos);
+    CHECK(request_message.find("\"startFrame\":0") != std::string::npos);
+    CHECK(request_message.find("\"levels\":10") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a stackTrace response message") {
+    const std::string            response_message =
+        R"({"success":true,"body":{"stackFrames":[{"id":1001,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}},{"id":1002,"name":"helper","line":34,"column":1,"source":{"path":"/tmp/helper.cpp"}}]}})";
+    const SDapStackTraceResponse response = CDapDebugSession::parseStackTraceResponseMessage(response_message);
+
+    REQUIRE(response.success);
+    REQUIRE(response.stack_frames.size() == 2);
+    CHECK(response.stack_frames[0].id == 1001);
+    CHECK(response.stack_frames[0].name == "main");
+    CHECK(response.stack_frames[0].source_path == "/tmp/sample.cpp");
+    CHECK(response.stack_frames[0].line == 12);
+    CHECK(response.stack_frames[0].column == 3);
+    CHECK(response.stack_frames[1].id == 1002);
+    CHECK(response.stack_frames[1].name == "helper");
+    CHECK(response.stack_frames[1].source_path == "/tmp/helper.cpp");
+}
+
+TEST_CASE("CDapDebugSession parses stackTrace frames when id is not the first field") {
+    const std::string response_message =
+        R"({"success":true,"body":{"stackFrames":[{"column":0,"id":1001,"instructionPointerReference":"0x7FFFF7FE3D40","line":3,"moduleId":"7FFFF7FC4000","name":"_start","source":{"name":"@_start","origin":"disassembly","sourceReference":1000}}]}})";
+
+    const SDapStackTraceResponse response = CDapDebugSession::parseStackTraceResponseMessage(response_message);
+
+    REQUIRE(response.success);
+    REQUIRE(response.stack_frames.size() == 1);
+    CHECK(response.stack_frames[0].id == 1001);
+    CHECK(response.stack_frames[0].name == "_start");
+    CHECK(response.stack_frames[0].line == 3);
+    CHECK(response.stack_frames[0].column == 0);
+    CHECK(response.stack_frames[0].source_path.empty());
+}
+
 TEST_CASE("CDapDebugSession builds a launch request message") {
     const std::string request_message = CDapDebugSession::buildLaunchRequestMessage(9,
                                                                                     {
@@ -399,4 +446,27 @@ TEST_CASE("CDapDebugSession returns threads from a threads response") {
     REQUIRE(threads_response.threads.size() == 1);
     CHECK(threads_response.threads[0].id == 1);
     CHECK(threads_response.threads[0].name == "main");
+}
+
+TEST_CASE("CDapDebugSession returns stack frames from a stackTrace response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"output","body":{"category":"console","output":"hello"}})",
+        R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":1001,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto stack_trace_response = dap_session.getStackTrace({
+        .thread_id   = 1,
+        .start_frame = 0,
+        .levels      = 20,
+    });
+
+    REQUIRE(stack_trace_response.success);
+    REQUIRE(stack_trace_response.stack_frames.size() == 1);
+    CHECK(stack_trace_response.stack_frames[0].id == 1001);
+    CHECK(stack_trace_response.stack_frames[0].name == "main");
+    CHECK(stack_trace_response.stack_frames[0].source_path == "/tmp/sample.cpp");
 }
