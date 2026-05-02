@@ -22,6 +22,13 @@
 
 namespace {
 
+    constexpr std::array<eThemePreset, 4> kThemePresets = {
+        eThemePreset::DEFAULT,
+        eThemePreset::AMBER,
+        eThemePreset::ICE,
+        eThemePreset::FOREST,
+    };
+
     enum class ePromptMode : std::uint8_t {
         NONE,
         ADD_WATCH,
@@ -29,11 +36,23 @@ namespace {
         MEMORY_TARGET,
     };
 
+    enum class eWatchActionMode : std::uint8_t {
+        NONE,
+        EDIT,
+        REMOVE,
+    };
+
     struct SPromptState {
         ePromptMode mode = ePromptMode::NONE;
         std::string input;
         std::size_t cursor_index     = 0;
         bool        replace_on_input = false;
+    };
+
+    struct SThemePickerState {
+        bool         active          = false;
+        eThemePreset original_preset = eThemePreset::DEFAULT;
+        std::size_t  selected_index  = 0;
     };
 
     SPromptState beginPrompt(ePromptMode mode, std::string initial_input = "", bool replace_on_input = false) {
@@ -50,6 +69,27 @@ namespace {
         const auto  cursor_index  = std::min(prompt_state.cursor_index, display_input.size());
         display_input.insert(cursor_index, "|");
         return "> " + display_input;
+    }
+
+    std::string themePresetName(eThemePreset preset) {
+        switch (preset) {
+            case eThemePreset::DEFAULT: return "default";
+            case eThemePreset::AMBER: return "amber";
+            case eThemePreset::ICE: return "ice";
+            case eThemePreset::FOREST: return "forest";
+        }
+
+        return "default";
+    }
+
+    std::size_t themePresetIndex(eThemePreset preset) {
+        for (std::size_t index = 0; index < kThemePresets.size(); ++index) {
+            if (kThemePresets[index] == preset) {
+                return index;
+            }
+        }
+
+        return 0;
     }
 
     struct SSessionBootstrapResult {
@@ -251,6 +291,30 @@ namespace {
                           text(buildPromptDisplay(prompt_state)) | color(theme.accent),
                       })) |
             size(WIDTH, GREATER_THAN, 48) | color(theme.overlay_border);
+    }
+
+    ftxui::Element renderThemePickerOverlay(const SThemePickerState& theme_picker_state, const SAppTheme& theme) {
+        using namespace ftxui;
+
+        Elements rows = {
+            text("j/k or arrows to preview") | color(theme.chrome),
+            text("Return keep  Esc cancel") | color(theme.chrome),
+            separator(),
+        };
+
+        for (std::size_t index = 0; index < kThemePresets.size(); ++index) {
+            Element row = hbox({
+                              text(index == theme_picker_state.selected_index ? "> " : "  "),
+                              text(themePresetName(kThemePresets[index])),
+                          }) |
+                color(theme.chrome);
+            if (index == theme_picker_state.selected_index) {
+                row = row | bgcolor(theme.selected_background) | color(theme.selected_foreground);
+            }
+            rows.push_back(row);
+        }
+
+        return window(text(" Theme Picker ") | color(theme.title), vbox(rows)) | size(WIDTH, EQUAL, 30) | color(theme.overlay_border);
     }
 
     ftxui::Element renderLeaderPopup(const std::vector<SKeybinding>& keybindings, eFocusPane focused_pane, const SAppTheme& theme) {
@@ -550,13 +614,15 @@ int main() {
     using namespace ftxui;
 
     const SAppConfig        app_config                   = loadAppConfig("roundtable.toml");
-    const SAppTheme         app_theme                    = buildTheme(app_config.theme_preset);
+    eThemePreset            active_theme_preset          = app_config.theme_preset;
+    SAppTheme               app_theme                    = buildTheme(active_theme_preset);
     SSessionBootstrapResult bootstrap_result             = bootstrapSession(app_config);
     auto&                   debug_session                = *bootstrap_result.session;
     SDebugSelection         debug_selection              = bootstrap_result.selection;
     std::uint64_t           disassembly_start_address    = bootstrap_result.disassembly_start_address;
     std::string             disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
-    std::string             session_status               = bootstrap_result.status_message;
+    const std::string       base_session_status          = bootstrap_result.status_message;
+    std::string             transient_status_message     = {};
     auto                    screen                       = ScreenInteractive::Fullscreen();
     SViewVisibilityState    view_visibility              = {
                         .show_memory_view      = app_config.show_memory_view,
@@ -569,8 +635,14 @@ int main() {
         {.expression = "sample_value"},
         {.expression = "sample_bytes"},
     };
-    std::string          manual_memory_target = {};
-    SPromptState         prompt_state         = {};
+    std::string       manual_memory_target = {};
+    SPromptState      prompt_state         = {};
+    SThemePickerState theme_picker_state   = {
+          .active          = false,
+          .original_preset = active_theme_preset,
+          .selected_index  = themePresetIndex(active_theme_preset),
+    };
+    eWatchActionMode     watch_action_mode = eWatchActionMode::NONE;
 
     SSelectablePaneState locals_pane = {
         .title = " Locals ",
@@ -593,14 +665,15 @@ int main() {
                     focused_pane, watch_expressions, manual_memory_target);
 
     auto renderer = Renderer([&] {
-        Element  locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
-        Element  watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
-        Element  auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme);
+        const std::string current_status  = transient_status_message.empty() ? base_session_status : transient_status_message;
+        Element           locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
+        Element           watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
+        Element           auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme);
 
-        Elements status_items = {
+        Elements          status_items = {
             text(" Roundtable ") | bgcolor(app_theme.selected_background) | color(app_theme.selected_foreground),
             separator(),
-            text(" " + session_status + " ") | color(app_theme.chrome),
+            text(" " + current_status + " ") | color(app_theme.chrome),
             separator(),
             text(" Tab cycle ") | color(app_theme.chrome),
             separator(),
@@ -635,6 +708,13 @@ int main() {
                     renderLeaderPopup(keybindings, focused_pane, app_theme) | center,
                     filler() | size(HEIGHT, EQUAL, 5),
                 }),
+            });
+        }
+
+        if (theme_picker_state.active) {
+            content = dbox({
+                content,
+                renderThemePickerOverlay(theme_picker_state, app_theme) | center,
             });
         }
 
@@ -747,6 +827,74 @@ int main() {
             return true;
         }
 
+        if (theme_picker_state.active) {
+            if (event == Event::Escape) {
+                active_theme_preset      = theme_picker_state.original_preset;
+                app_theme                = buildTheme(active_theme_preset);
+                theme_picker_state       = {};
+                transient_status_message = {};
+                return true;
+            }
+
+            if (event == Event::Return) {
+                theme_picker_state.active = false;
+                transient_status_message  = {};
+                return true;
+            }
+
+            const auto move_up   = event == Event::ArrowUp || event == Event::Character('k');
+            const auto move_down = event == Event::ArrowDown || event == Event::Character('j');
+
+            if (move_up && theme_picker_state.selected_index > 0) {
+                --theme_picker_state.selected_index;
+            } else if (move_down && theme_picker_state.selected_index + 1 < kThemePresets.size()) {
+                ++theme_picker_state.selected_index;
+            } else if (!(move_up || move_down)) {
+                return true;
+            }
+
+            active_theme_preset      = kThemePresets[theme_picker_state.selected_index];
+            app_theme                = buildTheme(active_theme_preset);
+            transient_status_message = "Theme preview: " + themePresetName(active_theme_preset);
+            return true;
+        }
+
+        if (watch_action_mode != eWatchActionMode::NONE && focused_pane == eFocusPane::WATCH_LIST) {
+            if (event == Event::Escape) {
+                watch_action_mode        = eWatchActionMode::NONE;
+                transient_status_message = {};
+                return true;
+            }
+
+            if (event == Event::Return) {
+                if (watch_action_mode == eWatchActionMode::EDIT) {
+                    if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
+                        prompt_state = beginPrompt(ePromptMode::EDIT_WATCH, watch_expressions[watch_list_pane.selected_index].expression, true);
+                    }
+                } else if (watch_action_mode == eWatchActionMode::REMOVE) {
+                    if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
+                        watch_expressions.erase(watch_expressions.begin() + static_cast<std::ptrdiff_t>(watch_list_pane.selected_index));
+                        if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
+                            --watch_list_pane.selected_index;
+                        }
+                        refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                        disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
+                    }
+                }
+
+                watch_action_mode        = eWatchActionMode::NONE;
+                transient_status_message = {};
+                return true;
+            }
+
+            const bool handled = handleVerticalNavigation(event, watch_list_pane);
+            if (handled) {
+                refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
+            }
+            return true;
+        }
+
         if (event == Event::Character('q')) {
             screen.Exit();
             return true;
@@ -779,6 +927,18 @@ int main() {
                         return true;
                     }
                     if (command.value() == eCommand::EDIT_WATCH) {
+                        if (watch_expressions.empty()) {
+                            transient_status_message = "No watch entries to edit";
+                            return true;
+                        }
+                        if (focused_pane != eFocusPane::WATCH_LIST) {
+                            focused_pane             = eFocusPane::WATCH_LIST;
+                            watch_action_mode        = eWatchActionMode::EDIT;
+                            transient_status_message = "Choose watch with j/k, press Return to edit, Esc to cancel";
+                            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
+                            return true;
+                        }
                         if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
                             prompt_state = beginPrompt(ePromptMode::EDIT_WATCH, watch_expressions[watch_list_pane.selected_index].expression, true);
                             return true;
@@ -786,6 +946,18 @@ int main() {
                         return true;
                     }
                     if (command.value() == eCommand::REMOVE_WATCH) {
+                        if (watch_expressions.empty()) {
+                            transient_status_message = "No watch entries to remove";
+                            return true;
+                        }
+                        if (focused_pane != eFocusPane::WATCH_LIST) {
+                            focused_pane             = eFocusPane::WATCH_LIST;
+                            watch_action_mode        = eWatchActionMode::REMOVE;
+                            transient_status_message = "Choose watch with j/k, press Return to remove, Esc to cancel";
+                            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
+                            return true;
+                        }
                         if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
                             watch_expressions.erase(watch_expressions.begin() + static_cast<std::ptrdiff_t>(watch_list_pane.selected_index));
                             if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
@@ -799,6 +971,15 @@ int main() {
                     }
                     if (command.value() == eCommand::SET_MEMORY_TARGET) {
                         prompt_state = beginPrompt(ePromptMode::MEMORY_TARGET, manual_memory_target);
+                        return true;
+                    }
+                    if (command.value() == eCommand::CYCLE_THEME) {
+                        theme_picker_state = {
+                            .active          = true,
+                            .original_preset = active_theme_preset,
+                            .selected_index  = themePresetIndex(active_theme_preset),
+                        };
+                        transient_status_message = "Theme preview: " + themePresetName(active_theme_preset);
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);

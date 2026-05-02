@@ -52,6 +52,8 @@ TEST_CASE("parseCommandName returns commands for known names") {
     CHECK(parseCommandName("remove_watch").value() == eCommand::REMOVE_WATCH);
     REQUIRE(parseCommandName("set_memory_target").has_value());
     CHECK(parseCommandName("set_memory_target").value() == eCommand::SET_MEMORY_TARGET);
+    REQUIRE(parseCommandName("cycle_theme").has_value());
+    CHECK(parseCommandName("cycle_theme").value() == eCommand::CYCLE_THEME);
     CHECK_FALSE(parseCommandName("missing_command").has_value());
 }
 

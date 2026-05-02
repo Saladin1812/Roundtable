@@ -23,6 +23,7 @@ enum class eCommand : std::uint8_t {
     EDIT_WATCH,
     REMOVE_WATCH,
     SET_MEMORY_TARGET,
+    CYCLE_THEME,
     TOGGLE_MEMORY,
     TOGGLE_DISASSEMBLY,
     TOGGLE_SHORTCUTS_HELP,

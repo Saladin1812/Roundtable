@@ -45,6 +45,7 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "[keybindings]\n";
         config_stream << "focus_memory = \"Space x\"\n";
         config_stream << "toggle_shortcuts_help = \"Space h\"\n";
+        config_stream << "cycle_theme = \"Space C\"\n";
     }
 
     const SAppConfig config = loadAppConfig(config_path.string());
@@ -70,6 +71,11 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_SHORTCUTS_HELP; });
     REQUIRE(help_keybinding != config.keybindings.end());
     CHECK(help_keybinding->keys == "Space h");
+
+    const auto theme_keybinding =
+        std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) { return keybinding.command == eCommand::CYCLE_THEME; });
+    REQUIRE(theme_keybinding != config.keybindings.end());
+    CHECK(theme_keybinding->keys == "Space C");
 
     std::filesystem::remove(config_path);
 }
