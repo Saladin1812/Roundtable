@@ -1,5 +1,18 @@
 #include "pane_state.hpp"
 
+#include <array>
+
+namespace {
+
+    constexpr std::array<eFocusPane, 4> kFocusOrder = {
+        eFocusPane::LOCALS,
+        eFocusPane::MEMORY_VIEW,
+        eFocusPane::DISASSEMBLY_VIEW,
+        eFocusPane::WATCH_LIST,
+    };
+
+} // namespace
+
 bool handleVerticalNavigation(ftxui::Event event, SSelectablePaneState& pane) {
     if (event == ftxui::Event::ArrowUp || event == ftxui::Event::Character('k')) {
         if (pane.selected_index > 0) {
@@ -18,12 +31,115 @@ bool handleVerticalNavigation(ftxui::Event event, SSelectablePaneState& pane) {
     return false;
 }
 
-eFocusPane advanceFocusPane(eFocusPane focused_pane) {
+bool isPaneVisible(eFocusPane focused_pane, const SViewVisibilityState& view_visibility) {
     switch (focused_pane) {
-        case eFocusPane::MEMORY_VIEW: return eFocusPane::WATCH_LIST;
-        case eFocusPane::WATCH_LIST: return eFocusPane::LOCALS;
-        case eFocusPane::LOCALS: return eFocusPane::MEMORY_VIEW;
+        case eFocusPane::LOCALS: return true;
+        case eFocusPane::WATCH_LIST: return true;
+        case eFocusPane::MEMORY_VIEW: return view_visibility.show_memory_view;
+        case eFocusPane::DISASSEMBLY_VIEW: return view_visibility.show_disassembly_view;
     }
 
-    return eFocusPane::MEMORY_VIEW;
+    return false;
+}
+
+eFocusPane normalizeFocusedPane(eFocusPane focused_pane, const SViewVisibilityState& view_visibility) {
+    if (isPaneVisible(focused_pane, view_visibility)) {
+        return focused_pane;
+    }
+
+    for (const auto candidate : kFocusOrder) {
+        if (isPaneVisible(candidate, view_visibility)) {
+            return candidate;
+        }
+    }
+
+    return eFocusPane::LOCALS;
+}
+
+eFocusPane advanceFocusPane(eFocusPane focused_pane, const SViewVisibilityState& view_visibility) {
+    eFocusPane normalized_focus = normalizeFocusedPane(focused_pane, view_visibility);
+
+    for (std::size_t i = 0; i < kFocusOrder.size(); ++i) {
+        if (kFocusOrder[i] != normalized_focus) {
+            continue;
+        }
+
+        for (std::size_t offset = 1; offset <= kFocusOrder.size(); ++offset) {
+            const auto candidate = kFocusOrder[(i + offset) % kFocusOrder.size()];
+            if (isPaneVisible(candidate, view_visibility)) {
+                return candidate;
+            }
+        }
+    }
+
+    return normalized_focus;
+}
+
+void executeCommand(eCommand command, eFocusPane& focused_pane, SViewVisibilityState& view_visibility) {
+    switch (command) {
+        case eCommand::FOCUS_LOCALS: focused_pane = eFocusPane::LOCALS; break;
+        case eCommand::FOCUS_MEMORY:
+            view_visibility.show_memory_view = true;
+            focused_pane                     = eFocusPane::MEMORY_VIEW;
+            break;
+        case eCommand::FOCUS_DISASSEMBLY:
+            view_visibility.show_disassembly_view = true;
+            focused_pane                          = eFocusPane::DISASSEMBLY_VIEW;
+            break;
+        case eCommand::FOCUS_WATCH_LIST: focused_pane = eFocusPane::WATCH_LIST; break;
+        case eCommand::TOGGLE_MEMORY: view_visibility.show_memory_view = !view_visibility.show_memory_view; break;
+        case eCommand::TOGGLE_DISASSEMBLY: view_visibility.show_disassembly_view = !view_visibility.show_disassembly_view; break;
+        case eCommand::TOGGLE_SHORTCUTS_HELP: view_visibility.show_shortcuts_overlay = !view_visibility.show_shortcuts_overlay; break;
+    }
+
+    focused_pane = normalizeFocusedPane(focused_pane, view_visibility);
+}
+
+std::optional<eCommand> parseCommandName(const std::string& command_name) {
+    if (command_name == "focus_locals") {
+        return eCommand::FOCUS_LOCALS;
+    }
+    if (command_name == "focus_memory") {
+        return eCommand::FOCUS_MEMORY;
+    }
+    if (command_name == "focus_disassembly") {
+        return eCommand::FOCUS_DISASSEMBLY;
+    }
+    if (command_name == "focus_watch_list") {
+        return eCommand::FOCUS_WATCH_LIST;
+    }
+    if (command_name == "toggle_memory") {
+        return eCommand::TOGGLE_MEMORY;
+    }
+    if (command_name == "toggle_disassembly") {
+        return eCommand::TOGGLE_DISASSEMBLY;
+    }
+    if (command_name == "toggle_shortcuts_help") {
+        return eCommand::TOGGLE_SHORTCUTS_HELP;
+    }
+
+    return std::nullopt;
+}
+
+std::string commandDescription(eCommand command) {
+    switch (command) {
+        case eCommand::FOCUS_LOCALS: return "Focus Locals";
+        case eCommand::FOCUS_MEMORY: return "Focus Memory";
+        case eCommand::FOCUS_DISASSEMBLY: return "Focus Disassembly";
+        case eCommand::FOCUS_WATCH_LIST: return "Focus Watch List";
+        case eCommand::TOGGLE_MEMORY: return "Toggle Memory View";
+        case eCommand::TOGGLE_DISASSEMBLY: return "Toggle Disassembly View";
+        case eCommand::TOGGLE_SHORTCUTS_HELP: return "Toggle Shortcuts Help";
+    }
+
+    return "Unknown Command";
+}
+
+std::vector<SKeybinding> defaultKeybindings() {
+    return {
+        {.keys = "Space l", .command = eCommand::FOCUS_LOCALS},          {.keys = "Space m", .command = eCommand::FOCUS_MEMORY},
+        {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},     {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},
+        {.keys = "Space t", .command = eCommand::TOGGLE_MEMORY},         {.keys = "Space a", .command = eCommand::TOGGLE_DISASSEMBLY},
+        {.keys = "Space ?", .command = eCommand::TOGGLE_SHORTCUTS_HELP},
+    };
 }

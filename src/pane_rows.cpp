@@ -1,5 +1,7 @@
 #include "pane_rows.hpp"
 
+#include <sstream>
+
 std::vector<std::string> formatLocalsPaneRows(const std::vector<SLocalVariable>& locals) {
     std::vector<std::string> rows;
     rows.reserve(locals.size());
@@ -22,6 +24,28 @@ std::vector<std::string> formatWatchListPaneRows(const std::vector<SWatchResult>
         }
 
         rows.push_back(watch_result.expression + " = " + watch_result.value + " : " + watch_result.type);
+    }
+
+    return rows;
+}
+
+std::vector<std::string> formatDisassemblyPaneRows(const std::vector<SDisassemblyInstruction>& instructions) {
+    std::vector<std::string> rows;
+    rows.reserve(instructions.size());
+
+    for (const auto& instruction : instructions) {
+        std::ostringstream row_stream;
+        row_stream << "0x" << std::hex << std::uppercase << instruction.address << "  " << instruction.mnemonic;
+
+        if (!instruction.operands.empty()) {
+            row_stream << " " << instruction.operands;
+        }
+
+        if (!instruction.comment.empty()) {
+            row_stream << " ; " << instruction.comment;
+        }
+
+        rows.push_back(row_stream.str());
     }
 
     return rows;

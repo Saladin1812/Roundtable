@@ -7,3 +7,4 @@
 
 std::vector<std::string> formatLocalsPaneRows(const std::vector<SLocalVariable>& locals);
 std::vector<std::string> formatWatchListPaneRows(const std::vector<SWatchResult>& watch_results);
+std::vector<std::string> formatDisassemblyPaneRows(const std::vector<SDisassemblyInstruction>& instructions);

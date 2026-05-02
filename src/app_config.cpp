@@ -1,0 +1,117 @@
+#include "app_config.hpp"
+
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+#include <string>
+
+namespace {
+
+    std::string trim(std::string value) {
+        const auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char character) { return std::isspace(character) != 0; });
+        const auto end   = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char character) { return std::isspace(character) != 0; }).base();
+
+        if (begin >= end) {
+            return "";
+        }
+
+        return std::string(begin, end);
+    }
+
+    std::string stripComment(std::string value) {
+        const auto comment_position = value.find('#');
+        if (comment_position == std::string::npos) {
+            return value;
+        }
+
+        return value.substr(0, comment_position);
+    }
+
+    std::string unquote(std::string value) {
+        value = trim(std::move(value));
+        if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+            return value.substr(1, value.size() - 2);
+        }
+
+        return value;
+    }
+
+    bool parseBool(const std::string& value, bool fallback) {
+        if (value == "true") {
+            return true;
+        }
+        if (value == "false") {
+            return false;
+        }
+
+        return fallback;
+    }
+
+} // namespace
+
+SAppConfig loadAppConfig(const std::string& config_path) {
+    SAppConfig         config = {};
+    std::ifstream      config_stream(config_path);
+    if (!config_stream.is_open()) {
+        return config;
+    }
+
+    std::string current_section;
+    std::string line;
+    while (std::getline(config_stream, line)) {
+        line = trim(stripComment(std::move(line)));
+        if (line.empty()) {
+            continue;
+        }
+
+        if (line.front() == '[' && line.back() == ']') {
+            current_section = trim(line.substr(1, line.size() - 2));
+            continue;
+        }
+
+        const auto separator_position = line.find('=');
+        if (separator_position == std::string::npos) {
+            continue;
+        }
+
+        const std::string key   = trim(line.substr(0, separator_position));
+        const std::string value = trim(line.substr(separator_position + 1));
+
+        if (current_section == "views") {
+            if (key == "show_memory") {
+                config.show_memory_view = parseBool(value, config.show_memory_view);
+            } else if (key == "show_disassembly") {
+                config.show_disassembly_view = parseBool(value, config.show_disassembly_view);
+            }
+            continue;
+        }
+
+        if (current_section == "keybindings") {
+            const auto command = parseCommandName(key);
+            if (!command.has_value()) {
+                continue;
+            }
+
+            const std::string configured_keys = unquote(value);
+            bool              updated         = false;
+            for (auto& keybinding : config.keybindings) {
+                if (keybinding.command != command.value()) {
+                    continue;
+                }
+
+                keybinding.keys = configured_keys;
+                updated         = true;
+                break;
+            }
+
+            if (!updated) {
+                config.keybindings.push_back({
+                    .keys    = configured_keys,
+                    .command = command.value(),
+                });
+            }
+        }
+    }
+
+    return config;
+}

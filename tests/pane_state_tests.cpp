@@ -4,9 +4,47 @@
 #include "pane_state.hpp"
 
 TEST_CASE("advanceFocusPane cycles through each pane in order") {
-    CHECK(advanceFocusPane(eFocusPane::MEMORY_VIEW) == eFocusPane::WATCH_LIST);
-    CHECK(advanceFocusPane(eFocusPane::WATCH_LIST) == eFocusPane::LOCALS);
-    CHECK(advanceFocusPane(eFocusPane::LOCALS) == eFocusPane::MEMORY_VIEW);
+    const SViewVisibilityState view_visibility = {
+        .show_memory_view      = true,
+        .show_disassembly_view = true,
+    };
+
+    CHECK(advanceFocusPane(eFocusPane::MEMORY_VIEW, view_visibility) == eFocusPane::DISASSEMBLY_VIEW);
+    CHECK(advanceFocusPane(eFocusPane::DISASSEMBLY_VIEW, view_visibility) == eFocusPane::WATCH_LIST);
+    CHECK(advanceFocusPane(eFocusPane::WATCH_LIST, view_visibility) == eFocusPane::LOCALS);
+    CHECK(advanceFocusPane(eFocusPane::LOCALS, view_visibility) == eFocusPane::MEMORY_VIEW);
+}
+
+TEST_CASE("advanceFocusPane skips hidden center panes") {
+    const SViewVisibilityState view_visibility = {
+        .show_memory_view      = false,
+        .show_disassembly_view = true,
+    };
+
+    CHECK(advanceFocusPane(eFocusPane::LOCALS, view_visibility) == eFocusPane::DISASSEMBLY_VIEW);
+    CHECK(advanceFocusPane(eFocusPane::DISASSEMBLY_VIEW, view_visibility) == eFocusPane::WATCH_LIST);
+}
+
+TEST_CASE("executeCommand toggles views and normalizes focus") {
+    eFocusPane           focused_pane    = eFocusPane::MEMORY_VIEW;
+    SViewVisibilityState view_visibility = {
+        .show_memory_view      = true,
+        .show_disassembly_view = false,
+    };
+
+    executeCommand(eCommand::TOGGLE_MEMORY, focused_pane, view_visibility);
+    CHECK_FALSE(view_visibility.show_memory_view);
+    CHECK(focused_pane == eFocusPane::LOCALS);
+
+    executeCommand(eCommand::FOCUS_DISASSEMBLY, focused_pane, view_visibility);
+    CHECK(view_visibility.show_disassembly_view);
+    CHECK(focused_pane == eFocusPane::DISASSEMBLY_VIEW);
+}
+
+TEST_CASE("parseCommandName returns commands for known names") {
+    REQUIRE(parseCommandName("focus_memory").has_value());
+    CHECK(parseCommandName("focus_memory").value() == eCommand::FOCUS_MEMORY);
+    CHECK_FALSE(parseCommandName("missing_command").has_value());
 }
 
 TEST_CASE("handleVerticalNavigation moves selection down within bounds") {

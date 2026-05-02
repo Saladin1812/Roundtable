@@ -45,3 +45,26 @@ TEST_CASE("formatWatchListPaneRows formats watch results and errors") {
     CHECK(rows[0] == "a = 42 : int");
     CHECK(rows[1] == "missing_value : Expression could not be evaluated");
 }
+
+TEST_CASE("formatDisassemblyPaneRows formats disassembly instructions") {
+    const std::vector<SDisassemblyInstruction> instructions = {
+        {
+            .address  = 0x401000,
+            .mnemonic = "push",
+            .operands = "rbp",
+            .comment  = "",
+        },
+        {
+            .address  = 0x401001,
+            .mnemonic = "mov",
+            .operands = "rbp, rsp",
+            .comment  = "prologue",
+        },
+    };
+
+    const std::vector<std::string> rows = formatDisassemblyPaneRows(instructions);
+
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0] == "0x401000  push rbp");
+    CHECK(rows[1] == "0x401001  mov rbp, rsp ; prologue");
+}

@@ -58,9 +58,12 @@ add_executable(roundtable  ${SOURCE_FILES}
 
 add_executable(roundtable_dap_probe
   src/dap_probe_main.cpp
+  src/app_config.cpp
   src/dap_session.cpp
   src/debug_session.cpp
   src/memory_view.cpp
+  src/pane_rows.cpp
+  src/pane_state.cpp
 )
 
 add_executable(roundtable_dap_sample
@@ -105,11 +108,13 @@ if(BUILD_TESTING)
   FetchContent_MakeAvailable(Catch2)
 
   add_executable(roundtable_tests
+    tests/app_config_tests.cpp
     tests/dap_session_tests.cpp
     tests/debug_session_tests.cpp
     tests/pane_rows_tests.cpp
     tests/pane_state_tests.cpp
     tests/memory_view_tests.cpp
+    src/app_config.cpp
     src/dap_session.cpp
     src/debug_session.cpp
     src/memory_view.cpp
