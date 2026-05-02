@@ -13,4 +13,7 @@ std::optional<std::uint64_t>            findFirstHexAddress(const std::string& t
 SMemoryReadRequest                      buildMemoryReadRequest(IDebugSession& debug_session, const SDebugSelection& debug_selection, const std::vector<SLocalVariable>& locals,
                                                                std::size_t selected_local_index, std::uint64_t fallback_address, const std::string& fallback_memory_reference = "",
                                                                std::size_t byte_count = 40, std::size_t bytes_per_row = 8);
+SMemoryReadRequest                      buildMemoryReadRequest(const std::vector<SWatchResult>& watch_results, std::size_t selected_watch_index, std::uint64_t fallback_address,
+                                                               const std::string& fallback_memory_reference = "", std::size_t byte_count = 40, std::size_t bytes_per_row = 8);
 std::optional<std::vector<std::string>> buildSyntheticMemoryRows(const std::vector<SLocalVariable>& locals, std::size_t selected_local_index, std::size_t bytes_per_row = 8);
+std::optional<std::vector<std::string>> buildSyntheticMemoryRows(const std::vector<SWatchResult>& watch_results, std::size_t selected_watch_index, std::size_t bytes_per_row = 8);

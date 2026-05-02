@@ -79,6 +79,26 @@ namespace {
         return rows;
     }
 
+    template <typename TItem>
+    std::optional<std::vector<std::string>> buildSyntheticMemoryRowsFromItems(const std::vector<TItem>& items, std::size_t selected_index, std::size_t bytes_per_row) {
+        if (items.empty()) {
+            return std::nullopt;
+        }
+
+        const auto& selected_item = items[std::min(selected_index, items.size() - 1)];
+        const bool  is_array_like = selected_item.type.find("array") != std::string::npos || selected_item.value.find('{') != std::string::npos;
+        if (!is_array_like) {
+            return std::nullopt;
+        }
+
+        const auto parsed_bytes = parseQuotedBytes(selected_item.value);
+        if (!parsed_bytes.has_value()) {
+            return std::nullopt;
+        }
+
+        return formatSyntheticMemoryRows(parsed_bytes.value(), bytes_per_row);
+    }
+
 } // namespace
 
 std::optional<std::uint64_t> findFirstHexAddress(const std::string& text) {
@@ -183,21 +203,35 @@ SMemoryReadRequest buildMemoryReadRequest(IDebugSession& debug_session, const SD
     };
 }
 
+SMemoryReadRequest buildMemoryReadRequest(const std::vector<SWatchResult>& watch_results, std::size_t selected_watch_index, std::uint64_t fallback_address,
+                                          const std::string& fallback_memory_reference, std::size_t byte_count, std::size_t bytes_per_row) {
+    std::uint64_t start_address    = fallback_address;
+    std::string   memory_reference = fallback_memory_reference;
+
+    if (!watch_results.empty()) {
+        const auto& selected_watch = watch_results[std::min(selected_watch_index, watch_results.size() - 1)];
+
+        if (const auto watch_memory_reference_address = findFirstHexAddress(selected_watch.memory_reference); watch_memory_reference_address.has_value()) {
+            start_address    = watch_memory_reference_address.value();
+            memory_reference = selected_watch.memory_reference;
+        } else if (const auto watch_value_address = findFirstHexAddress(selected_watch.value); watch_value_address.has_value()) {
+            start_address = watch_value_address.value();
+            memory_reference.clear();
+        }
+    }
+
+    return {
+        .start_address    = start_address,
+        .memory_reference = memory_reference,
+        .byte_count       = byte_count,
+        .bytes_per_row    = bytes_per_row,
+    };
+}
+
 std::optional<std::vector<std::string>> buildSyntheticMemoryRows(const std::vector<SLocalVariable>& locals, std::size_t selected_local_index, std::size_t bytes_per_row) {
-    if (locals.empty()) {
-        return std::nullopt;
-    }
+    return buildSyntheticMemoryRowsFromItems(locals, selected_local_index, bytes_per_row);
+}
 
-    const auto& selected_local = locals[std::min(selected_local_index, locals.size() - 1)];
-    const bool  is_array_like  = selected_local.type.find("array") != std::string::npos || selected_local.value.find('{') != std::string::npos;
-    if (!is_array_like) {
-        return std::nullopt;
-    }
-
-    const auto parsed_bytes = parseQuotedBytes(selected_local.value);
-    if (!parsed_bytes.has_value()) {
-        return std::nullopt;
-    }
-
-    return formatSyntheticMemoryRows(parsed_bytes.value(), bytes_per_row);
+std::optional<std::vector<std::string>> buildSyntheticMemoryRows(const std::vector<SWatchResult>& watch_results, std::size_t selected_watch_index, std::size_t bytes_per_row) {
+    return buildSyntheticMemoryRowsFromItems(watch_results, selected_watch_index, bytes_per_row);
 }

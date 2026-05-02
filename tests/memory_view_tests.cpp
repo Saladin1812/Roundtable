@@ -248,3 +248,38 @@ TEST_CASE("buildSyntheticMemoryRows returns no rows for non-array locals") {
 
     CHECK_FALSE(buildSyntheticMemoryRows(locals, 0).has_value());
 }
+
+TEST_CASE("buildMemoryReadRequest uses watch memory reference when available") {
+    const std::vector<SWatchResult> watch_results = {
+        {
+            .expression       = "sample_bytes",
+            .value            = R"({_M_elems:"Hello!\0A"})",
+            .type             = "volatile std::array<unsigned char, 8>",
+            .memory_reference = "0x7000",
+            .error_message    = "",
+        },
+    };
+
+    const auto memory_read_request = buildMemoryReadRequest(watch_results, 0, 0x1000);
+
+    CHECK(memory_read_request.start_address == 0x7000);
+    CHECK(memory_read_request.memory_reference == "0x7000");
+}
+
+TEST_CASE("buildSyntheticMemoryRows formats bytes from an array-like watch value") {
+    const std::vector<SWatchResult> watch_results = {
+        {
+            .expression       = "sample_bytes",
+            .value            = R"({_M_elems:"Hello!\0A"})",
+            .type             = "volatile std::array<unsigned char, 8>",
+            .memory_reference = "",
+            .error_message    = "",
+        },
+    };
+
+    const auto rows = buildSyntheticMemoryRows(watch_results, 0);
+
+    REQUIRE(rows.has_value());
+    REQUIRE(rows->size() == 1);
+    CHECK(rows->at(0) == "<value>  48 65 6C 6C 6F 21 00 41  Hello!.A");
+}

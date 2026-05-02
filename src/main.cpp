@@ -283,31 +283,50 @@ namespace {
 
     void refreshPaneRows(IDebugSession& debug_session, const SDebugSelection& debug_selection, SSelectablePaneState& locals_pane, SSelectablePaneState& memory_view_pane,
                          SSelectablePaneState& disassembly_pane, SSelectablePaneState& watch_list_pane, std::uint64_t disassembly_start_address,
-                         const std::string& disassembly_memory_reference) {
-        const auto locals = debug_session.getLocals(debug_selection);
-        locals_pane.rows  = formatLocalsPaneRows(locals);
-        const auto memory_read_request =
-            buildMemoryReadRequest(debug_session, debug_selection, locals, locals_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
-        const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
-        const auto synthetic_memory_rows = buildSyntheticMemoryRows(locals, locals_pane.selected_index, memory_read_request.bytes_per_row);
-        const auto selected_local_index  = locals.empty() ? 0UL : std::min(locals_pane.selected_index, locals.size() - 1);
-        const bool selected_local_has_explicit_memory_reference =
-            !locals.empty() && !locals[selected_local_index].memory_reference.empty() && findFirstHexAddress(locals[selected_local_index].memory_reference).has_value();
+                         const std::string& disassembly_memory_reference, eFocusPane focused_pane) {
+        const auto locals        = debug_session.getLocals(debug_selection);
+        const auto watch_results = debug_session.evaluateWatches(debug_selection,
+                                                                 {
+                                                                     {.expression = "sample_value"},
+                                                                     {.expression = "sample_bytes"},
+                                                                 });
+        locals_pane.rows         = formatLocalsPaneRows(locals);
+        watch_list_pane.rows     = formatWatchListPaneRows(watch_results);
 
-        if (synthetic_memory_rows.has_value() && !selected_local_has_explicit_memory_reference) {
-            memory_view_pane.rows = synthetic_memory_rows.value();
-        } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
-            memory_view_pane.rows = synthetic_memory_rows.value();
+        if (focused_pane == eFocusPane::WATCH_LIST && !watch_results.empty()) {
+            const auto memory_read_request   = buildMemoryReadRequest(watch_results, watch_list_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
+            const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
+            const auto synthetic_memory_rows = buildSyntheticMemoryRows(watch_results, watch_list_pane.selected_index, memory_read_request.bytes_per_row);
+            const auto selected_watch_index  = std::min(watch_list_pane.selected_index, watch_results.size() - 1);
+            const bool selected_watch_has_explicit_memory_reference =
+                !watch_results[selected_watch_index].memory_reference.empty() && findFirstHexAddress(watch_results[selected_watch_index].memory_reference).has_value();
+
+            if (synthetic_memory_rows.has_value() && !selected_watch_has_explicit_memory_reference) {
+                memory_view_pane.rows = synthetic_memory_rows.value();
+            } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
+                memory_view_pane.rows = synthetic_memory_rows.value();
+            } else {
+                memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
+            }
         } else {
-            memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
+            const auto memory_read_request =
+                buildMemoryReadRequest(debug_session, debug_selection, locals, locals_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
+            const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
+            const auto synthetic_memory_rows = buildSyntheticMemoryRows(locals, locals_pane.selected_index, memory_read_request.bytes_per_row);
+            const auto selected_local_index  = locals.empty() ? 0UL : std::min(locals_pane.selected_index, locals.size() - 1);
+            const bool selected_local_has_explicit_memory_reference =
+                !locals.empty() && !locals[selected_local_index].memory_reference.empty() && findFirstHexAddress(locals[selected_local_index].memory_reference).has_value();
+
+            if (synthetic_memory_rows.has_value() && !selected_local_has_explicit_memory_reference) {
+                memory_view_pane.rows = synthetic_memory_rows.value();
+            } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
+                memory_view_pane.rows = synthetic_memory_rows.value();
+            } else {
+                memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
+            }
         }
 
         disassembly_pane.rows = formatDisassemblyPaneRows(debug_session.disassemble(debug_selection, disassembly_start_address, 8));
-        watch_list_pane.rows  = formatWatchListPaneRows(debug_session.evaluateWatches(debug_selection,
-                                                                                      {
-                                                                                         {.expression = "sample_value"},
-                                                                                         {.expression = "sample_bytes"},
-                                                                                     }));
 
         locals_pane.selected_index      = std::min(locals_pane.selected_index, locals_pane.rows.empty() ? 0UL : locals_pane.rows.size() - 1);
         memory_view_pane.selected_index = std::min(memory_view_pane.selected_index, memory_view_pane.rows.empty() ? 0UL : memory_view_pane.rows.size() - 1);
@@ -353,7 +372,8 @@ int main() {
         .rows  = {},
     };
 
-    refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference);
+    refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
+                    focused_pane);
 
     auto renderer = Renderer([&] {
         Element  locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS);
@@ -409,7 +429,7 @@ int main() {
 
         if (event == Event::Character('r')) {
             refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                            disassembly_memory_reference);
+                            disassembly_memory_reference, focused_pane);
             return true;
         }
 
@@ -444,6 +464,8 @@ int main() {
 
         if (event == Event::Tab) {
             focused_pane = advanceFocusPane(focused_pane, view_visibility);
+            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                            disassembly_memory_reference, focused_pane);
             return true;
         }
 
@@ -451,12 +473,17 @@ int main() {
             const bool handled = handleVerticalNavigation(event, locals_pane);
             if (handled) {
                 refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference);
+                                disassembly_memory_reference, focused_pane);
             }
             return handled;
         }
         if (focused_pane == eFocusPane::WATCH_LIST) {
-            return handleVerticalNavigation(event, watch_list_pane);
+            const bool handled = handleVerticalNavigation(event, watch_list_pane);
+            if (handled) {
+                refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                disassembly_memory_reference, focused_pane);
+            }
+            return handled;
         }
         if (focused_pane == eFocusPane::MEMORY_VIEW) {
             return handleVerticalNavigation(event, memory_view_pane);
