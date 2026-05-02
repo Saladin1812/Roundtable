@@ -3,13 +3,14 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <ranges>
 #include <string>
 
 namespace {
 
     std::string trim(std::string value) {
-        const auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char character) { return std::isspace(character) != 0; });
-        const auto end   = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char character) { return std::isspace(character) != 0; }).base();
+        const auto begin = std::ranges::find_if_not(value, [](unsigned char character) { return std::isspace(character) != 0; });
+        const auto end   = std::ranges::find_if_not(std::ranges::reverse_view(value), [](unsigned char character) { return std::isspace(character) != 0; }).base();
 
         if (begin >= end) {
             return "";
@@ -50,8 +51,8 @@ namespace {
 } // namespace
 
 SAppConfig loadAppConfig(const std::string& config_path) {
-    SAppConfig         config = {};
-    std::ifstream      config_stream(config_path);
+    SAppConfig    config = {};
+    std::ifstream config_stream(config_path);
     if (!config_stream.is_open()) {
         return config;
     }

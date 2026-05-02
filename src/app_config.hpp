@@ -6,8 +6,8 @@
 #include "pane_state.hpp"
 
 struct SAppConfig {
-    bool                     show_memory_view       = true;
-    bool                     show_disassembly_view  = false;
+    bool                     show_memory_view      = true;
+    bool                     show_disassembly_view = false;
     std::vector<SKeybinding> keybindings           = defaultKeybindings();
 };
 
