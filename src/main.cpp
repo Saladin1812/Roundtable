@@ -566,6 +566,18 @@ int main() {
                 return true;
             }
 
+            if (event == Event::Home) {
+                prompt_state.cursor_index     = 0;
+                prompt_state.replace_on_input = false;
+                return true;
+            }
+
+            if (event == Event::End) {
+                prompt_state.cursor_index     = prompt_state.input.size();
+                prompt_state.replace_on_input = false;
+                return true;
+            }
+
             if (event == Event::Backspace) {
                 if (prompt_state.replace_on_input) {
                     prompt_state.cursor_index     = 0;
@@ -574,6 +586,17 @@ int main() {
                 } else if (prompt_state.cursor_index > 0 && !prompt_state.input.empty()) {
                     prompt_state.input.erase(prompt_state.cursor_index - 1, 1);
                     --prompt_state.cursor_index;
+                }
+                return true;
+            }
+
+            if (event == Event::Delete) {
+                if (prompt_state.replace_on_input) {
+                    prompt_state.cursor_index     = prompt_state.input.size();
+                    prompt_state.replace_on_input = false;
+                    prompt_state.input.clear();
+                } else if (prompt_state.cursor_index < prompt_state.input.size()) {
+                    prompt_state.input.erase(prompt_state.cursor_index, 1);
                 }
                 return true;
             }
