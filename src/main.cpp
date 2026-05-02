@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -9,12 +10,20 @@
 #include <ftxui/dom/elements.hpp>
 
 #include "app_config.hpp"
+#include "dap_session.hpp"
 #include "debug_session.hpp"
 #include "memory_view.hpp"
-#include "pane_state.hpp"
 #include "pane_rows.hpp"
+#include "pane_state.hpp"
 
 namespace {
+
+    struct SSessionBootstrapResult {
+        std::unique_ptr<IDebugSession> session;
+        SDebugSelection                selection;
+        std::uint64_t                  disassembly_start_address = 0x401000;
+        std::string                    status_message;
+    };
 
     ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused) {
         using namespace ftxui;
@@ -28,12 +37,16 @@ namespace {
         rows.push_back(title);
         rows.push_back(separator());
 
-        for (std::size_t i = 0; i < pane.rows.size(); ++i) {
-            Element data_row = text(pane.rows[i]);
-            if (is_focused && pane.selected_index == i) {
-                rows.push_back(data_row | inverted);
-            } else {
-                rows.push_back(data_row);
+        if (pane.rows.empty()) {
+            rows.push_back(text("(empty)"));
+        } else {
+            for (std::size_t i = 0; i < pane.rows.size(); ++i) {
+                Element data_row = text(pane.rows[i]);
+                if (is_focused && pane.selected_index == i) {
+                    rows.push_back(data_row | inverted);
+                } else {
+                    rows.push_back(data_row);
+                }
             }
         }
 
@@ -45,7 +58,7 @@ namespace {
         hints.reserve(keybindings.size());
 
         for (const auto& keybinding : keybindings) {
-            if (keybinding.keys.rfind("Space ", 0) != 0 || keybinding.keys.size() <= 6) {
+            if (!keybinding.keys.starts_with("Space ") || keybinding.keys.size() <= 6) {
                 continue;
             }
 
@@ -68,10 +81,7 @@ namespace {
         using namespace ftxui;
 
         Elements rows = {
-            text(" Roundtable Shortcuts ") | bold,
-            separator(),
-            text("Tab  Cycle focus"),
-            text("q  Quit"),
+            text(" Roundtable Shortcuts ") | bold, separator(), text("Tab  Cycle focus"), text("r  Refresh panes"), text("q  Quit"),
         };
 
         for (const auto& keybinding : keybindings) {
@@ -115,48 +125,208 @@ namespace {
             flex;
     }
 
+    SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
+        if (app_config.session_mode != eSessionMode::DAP_LAUNCH) {
+            return {
+                .session                   = std::make_unique<CMockDebugSession>(),
+                .selection                 = {},
+                .disassembly_start_address = 0x401000,
+                .status_message            = "Mock session",
+            };
+        }
+
+        auto dap_session = std::make_unique<CDapDebugSession>(std::make_unique<CTcpDapTransport>(),
+                                                              SDapEndpointConfig{
+                                                                  .transport_kind = eDapTransportKind::TCP,
+                                                                  .command        = app_config.dap_launch.command,
+                                                                  .arguments      = {"--liblldb", app_config.dap_launch.liblldb_path},
+                                                                  .auth_token     = "",
+                                                              });
+
+        if (app_config.dap_launch.command.empty() || app_config.dap_launch.liblldb_path.empty() || app_config.dap_launch.program.empty()) {
+            return {
+                .session                   = std::move(dap_session),
+                .selection                 = {},
+                .disassembly_start_address = 0x401000,
+                .status_message            = "DAP launch config is incomplete",
+            };
+        }
+
+        if (!dap_session->connect()) {
+            return {
+                .session                   = std::move(dap_session),
+                .selection                 = {},
+                .disassembly_start_address = 0x401000,
+                .status_message            = "DAP connect failed: " + dap_session->getLastError(),
+            };
+        }
+
+        if (!dap_session->initialize()) {
+            return {
+                .session                   = std::move(dap_session),
+                .selection                 = {},
+                .disassembly_start_address = 0x401000,
+                .status_message            = "DAP initialize failed: " + dap_session->getLastError(),
+            };
+        }
+
+        if (!dap_session->launch({
+                .program           = app_config.dap_launch.program,
+                .arguments         = {},
+                .working_directory = app_config.dap_launch.working_directory,
+                .stop_on_entry     = app_config.dap_launch.stop_on_entry,
+            })) {
+            return {
+                .session                   = std::move(dap_session),
+                .selection                 = {},
+                .disassembly_start_address = 0x401000,
+                .status_message            = "DAP launch failed: " + dap_session->getLastError(),
+            };
+        }
+
+        if (!dap_session->configurationDone()) {
+            return {
+                .session                   = std::move(dap_session),
+                .selection                 = {},
+                .disassembly_start_address = 0x401000,
+                .status_message            = "DAP configurationDone failed: " + dap_session->getLastError(),
+            };
+        }
+
+        if (!dap_session->waitForStoppedEvent()) {
+            return {
+                .session                   = std::move(dap_session),
+                .selection                 = {},
+                .disassembly_start_address = 0x401000,
+                .status_message            = "DAP waitForStoppedEvent failed: " + dap_session->getLastError(),
+            };
+        }
+
+        SDebugSelection selection = {};
+        auto            threads   = dap_session->getThreads();
+        if (threads.success && !threads.threads.empty()) {
+            selection.thread_id = threads.threads.front().id;
+        }
+
+        if (app_config.dap_launch.continue_once && selection.thread_id != 0) {
+            const auto continue_response = dap_session->continueExecution({
+                .thread_id = static_cast<int>(selection.thread_id),
+            });
+
+            if (!continue_response.success) {
+                return {
+                    .session                   = std::move(dap_session),
+                    .selection                 = selection,
+                    .disassembly_start_address = 0x401000,
+                    .status_message            = "DAP continue failed: " + continue_response.error_message,
+                };
+            }
+
+            if (!dap_session->waitForStoppedEvent()) {
+                return {
+                    .session                   = std::move(dap_session),
+                    .selection                 = selection,
+                    .disassembly_start_address = 0x401000,
+                    .status_message            = "DAP wait after continue failed: " + dap_session->getLastError(),
+                };
+            }
+
+            threads = dap_session->getThreads();
+            if (threads.success && !threads.threads.empty()) {
+                selection.thread_id = threads.threads.front().id;
+            }
+        }
+
+        std::uint64_t disassembly_start_address = 0x401000;
+        if (selection.thread_id != 0) {
+            const auto stack_trace = dap_session->getStackTrace({
+                .thread_id   = static_cast<int>(selection.thread_id),
+                .start_frame = 0,
+                .levels      = 16,
+            });
+
+            if (stack_trace.success && !stack_trace.stack_frames.empty()) {
+                const auto main_frame_iterator     = std::ranges::find_if(stack_trace.stack_frames, [](const SDapStackFrame& frame) { return frame.name == "main"; });
+                const auto selected_frame_iterator = main_frame_iterator != stack_trace.stack_frames.end() ? main_frame_iterator : stack_trace.stack_frames.begin();
+
+                selection.frame_index = static_cast<std::size_t>(std::distance(stack_trace.stack_frames.begin(), selected_frame_iterator));
+
+                if (!selected_frame_iterator->instruction_pointer_reference.empty()) {
+                    try {
+                        disassembly_start_address = std::stoull(selected_frame_iterator->instruction_pointer_reference, nullptr, 0);
+                    } catch (const std::exception&) { disassembly_start_address = 0x401000; }
+                }
+            }
+        }
+
+        return {
+            .session                   = std::move(dap_session),
+            .selection                 = selection,
+            .disassembly_start_address = disassembly_start_address,
+            .status_message            = selection.thread_id != 0 ? "DAP launch session" : "DAP launch session without active thread",
+        };
+    }
+
+    void refreshPaneRows(IDebugSession& debug_session, const SDebugSelection& debug_selection, SSelectablePaneState& locals_pane, SSelectablePaneState& memory_view_pane,
+                         SSelectablePaneState& disassembly_pane, SSelectablePaneState& watch_list_pane, std::uint64_t disassembly_start_address) {
+        locals_pane.rows      = formatLocalsPaneRows(debug_session.getLocals(debug_selection));
+        memory_view_pane.rows = generateMemoryViewRows(debug_session.readMemory(debug_selection,
+                                                                                {
+                                                                                    .start_address = 0x1000,
+                                                                                    .byte_count    = 40,
+                                                                                    .bytes_per_row = 8,
+                                                                                }));
+        disassembly_pane.rows = formatDisassemblyPaneRows(debug_session.disassemble(debug_selection, disassembly_start_address, 8));
+        watch_list_pane.rows  = formatWatchListPaneRows(debug_session.evaluateWatches(debug_selection,
+                                                                                      {
+                                                                                         {.expression = "sample_value"},
+                                                                                         {.expression = "sample_bytes"},
+                                                                                     }));
+
+        locals_pane.selected_index      = std::min(locals_pane.selected_index, locals_pane.rows.empty() ? 0UL : locals_pane.rows.size() - 1);
+        memory_view_pane.selected_index = std::min(memory_view_pane.selected_index, memory_view_pane.rows.empty() ? 0UL : memory_view_pane.rows.size() - 1);
+        disassembly_pane.selected_index = std::min(disassembly_pane.selected_index, disassembly_pane.rows.empty() ? 0UL : disassembly_pane.rows.size() - 1);
+        watch_list_pane.selected_index  = std::min(watch_list_pane.selected_index, watch_list_pane.rows.empty() ? 0UL : watch_list_pane.rows.size() - 1);
+    }
+
 } // namespace
 
 int main() {
     using namespace ftxui;
 
-    const SAppConfig     app_config      = loadAppConfig("roundtable.toml");
-    auto                 screen          = ScreenInteractive::Fullscreen();
-    CMockDebugSession    debug_session   = {};
-    SDebugSelection      debug_selection = {};
-    SViewVisibilityState view_visibility = {
-        .show_memory_view      = app_config.show_memory_view,
-        .show_disassembly_view = app_config.show_disassembly_view,
+    const SAppConfig        app_config                = loadAppConfig("roundtable.toml");
+    SSessionBootstrapResult bootstrap_result          = bootstrapSession(app_config);
+    auto&                   debug_session             = *bootstrap_result.session;
+    SDebugSelection         debug_selection           = bootstrap_result.selection;
+    std::uint64_t           disassembly_start_address = bootstrap_result.disassembly_start_address;
+    std::string             session_status            = bootstrap_result.status_message;
+    auto                    screen                    = ScreenInteractive::Fullscreen();
+    SViewVisibilityState    view_visibility           = {
+                     .show_memory_view      = app_config.show_memory_view,
+                     .show_disassembly_view = app_config.show_disassembly_view,
     };
-    eFocusPane           focused_pane   = normalizeFocusedPane(eFocusPane::MEMORY_VIEW, view_visibility);
+    eFocusPane           focused_pane   = normalizeFocusedPane(app_config.startup_focus, view_visibility);
     const auto           keybindings    = app_config.keybindings;
     bool                 leader_pending = false;
 
     SSelectablePaneState locals_pane = {
         .title = " Locals ",
-        .rows  = formatLocalsPaneRows(debug_session.getLocals(debug_selection)),
+        .rows  = {},
     };
     SSelectablePaneState memory_view_pane = {
         .title = " Memory View ",
-        .rows  = generateMemoryViewRows(debug_session.readMemory(debug_selection,
-                                                                 {
-                                                                     .start_address = 0x1000,
-                                                                     .byte_count    = 40,
-                                                                     .bytes_per_row = 8,
-                                                                })),
+        .rows  = {},
     };
     SSelectablePaneState disassembly_pane = {
         .title = " Disassembly ",
-        .rows  = formatDisassemblyPaneRows(debug_session.disassemble(debug_selection, 0x401000, 8)),
+        .rows  = {},
     };
     SSelectablePaneState watch_list_pane = {
         .title = " Watch List ",
-        .rows  = formatWatchListPaneRows(debug_session.evaluateWatches(debug_selection,
-                                                                       {
-                                                                          {.expression = "a"},
-                                                                          {.expression = "ptr"},
-                                                                      })),
+        .rows  = {},
     };
+
+    refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address);
 
     auto renderer = Renderer([&] {
         Element  locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS);
@@ -164,7 +334,17 @@ int main() {
         Element  auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane);
 
         Elements status_items = {
-            text(" Roundtable ") | inverted, separator(), text(" Tab cycle "), separator(), text(" Space commands "), separator(), text(" q quit "),
+            text(" Roundtable ") | inverted,
+            separator(),
+            text(" " + session_status + " "),
+            separator(),
+            text(" Tab cycle "),
+            separator(),
+            text(" r refresh "),
+            separator(),
+            text(" Space commands "),
+            separator(),
+            text(" q quit "),
         };
 
         if (leader_pending) {
@@ -197,6 +377,11 @@ int main() {
     auto component = CatchEvent(renderer, [&](Event event) {
         if (event == Event::Character('q')) {
             screen.Exit();
+            return true;
+        }
+
+        if (event == Event::Character('r')) {
+            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address);
             return true;
         }
 

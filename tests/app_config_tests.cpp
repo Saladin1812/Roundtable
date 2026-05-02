@@ -9,8 +9,11 @@
 TEST_CASE("loadAppConfig returns defaults when config file is missing") {
     const SAppConfig config = loadAppConfig("/tmp/roundtable-missing-config.toml");
 
+    CHECK(config.session_mode == eSessionMode::MOCK);
+    CHECK(config.startup_focus == eFocusPane::MEMORY_VIEW);
     CHECK(config.show_memory_view);
     CHECK_FALSE(config.show_disassembly_view);
+    CHECK(config.dap_launch.command.empty());
     REQUIRE_FALSE(config.keybindings.empty());
 }
 
@@ -19,9 +22,21 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
 
     {
         std::ofstream config_stream(config_path);
+        config_stream << "[session]\n";
+        config_stream << "mode = \"dap_launch\"\n";
+        config_stream << "startup_focus = \"disassembly\"\n";
+        config_stream << "\n";
         config_stream << "[views]\n";
         config_stream << "show_memory = false\n";
         config_stream << "show_disassembly = true\n";
+        config_stream << "\n";
+        config_stream << "[dap_launch]\n";
+        config_stream << "command = \"/tmp/codelldb\"\n";
+        config_stream << "liblldb_path = \"/tmp/liblldb.so\"\n";
+        config_stream << "program = \"/tmp/sample\"\n";
+        config_stream << "working_directory = \"/tmp\"\n";
+        config_stream << "stop_on_entry = false\n";
+        config_stream << "continue_once = true\n";
         config_stream << "\n";
         config_stream << "[keybindings]\n";
         config_stream << "focus_memory = \"Space x\"\n";
@@ -30,18 +45,24 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
 
     const SAppConfig config = loadAppConfig(config_path.string());
 
+    CHECK(config.session_mode == eSessionMode::DAP_LAUNCH);
+    CHECK(config.startup_focus == eFocusPane::DISASSEMBLY_VIEW);
     CHECK_FALSE(config.show_memory_view);
     CHECK(config.show_disassembly_view);
+    CHECK(config.dap_launch.command == "/tmp/codelldb");
+    CHECK(config.dap_launch.liblldb_path == "/tmp/liblldb.so");
+    CHECK(config.dap_launch.program == "/tmp/sample");
+    CHECK(config.dap_launch.working_directory == "/tmp");
+    CHECK_FALSE(config.dap_launch.stop_on_entry);
+    CHECK(config.dap_launch.continue_once);
 
-    const auto memory_keybinding = std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) {
-        return keybinding.command == eCommand::FOCUS_MEMORY;
-    });
+    const auto memory_keybinding =
+        std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_MEMORY; });
     REQUIRE(memory_keybinding != config.keybindings.end());
     CHECK(memory_keybinding->keys == "Space x");
 
-    const auto help_keybinding = std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) {
-        return keybinding.command == eCommand::TOGGLE_SHORTCUTS_HELP;
-    });
+    const auto help_keybinding =
+        std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_SHORTCUTS_HELP; });
     REQUIRE(help_keybinding != config.keybindings.end());
     CHECK(help_keybinding->keys == "Space h");
 

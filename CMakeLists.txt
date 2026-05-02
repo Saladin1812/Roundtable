@@ -97,6 +97,7 @@ target_link_libraries(roundtable
 )
 
 target_link_libraries(roundtable_dap_probe
+  PRIVATE ftxui::component
 )
 
 if(BUILD_TESTING)

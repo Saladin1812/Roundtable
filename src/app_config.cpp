@@ -48,6 +48,34 @@ namespace {
         return fallback;
     }
 
+    eSessionMode parseSessionMode(const std::string& value, eSessionMode fallback) {
+        if (value == "mock") {
+            return eSessionMode::MOCK;
+        }
+        if (value == "dap_launch") {
+            return eSessionMode::DAP_LAUNCH;
+        }
+
+        return fallback;
+    }
+
+    eFocusPane parseFocusPane(const std::string& value, eFocusPane fallback) {
+        if (value == "locals") {
+            return eFocusPane::LOCALS;
+        }
+        if (value == "memory") {
+            return eFocusPane::MEMORY_VIEW;
+        }
+        if (value == "disassembly") {
+            return eFocusPane::DISASSEMBLY_VIEW;
+        }
+        if (value == "watch_list") {
+            return eFocusPane::WATCH_LIST;
+        }
+
+        return fallback;
+    }
+
 } // namespace
 
 SAppConfig loadAppConfig(const std::string& config_path) {
@@ -83,6 +111,32 @@ SAppConfig loadAppConfig(const std::string& config_path) {
                 config.show_memory_view = parseBool(value, config.show_memory_view);
             } else if (key == "show_disassembly") {
                 config.show_disassembly_view = parseBool(value, config.show_disassembly_view);
+            }
+            continue;
+        }
+
+        if (current_section == "session") {
+            if (key == "mode") {
+                config.session_mode = parseSessionMode(unquote(value), config.session_mode);
+            } else if (key == "startup_focus") {
+                config.startup_focus = parseFocusPane(unquote(value), config.startup_focus);
+            }
+            continue;
+        }
+
+        if (current_section == "dap_launch") {
+            if (key == "command") {
+                config.dap_launch.command = unquote(value);
+            } else if (key == "liblldb_path") {
+                config.dap_launch.liblldb_path = unquote(value);
+            } else if (key == "program") {
+                config.dap_launch.program = unquote(value);
+            } else if (key == "working_directory") {
+                config.dap_launch.working_directory = unquote(value);
+            } else if (key == "stop_on_entry") {
+                config.dap_launch.stop_on_entry = parseBool(value, config.dap_launch.stop_on_entry);
+            } else if (key == "continue_once") {
+                config.dap_launch.continue_once = parseBool(value, config.dap_launch.continue_once);
             }
             continue;
         }

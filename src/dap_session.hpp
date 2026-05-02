@@ -73,6 +73,7 @@ struct SDapStackFrame {
     int         id = 0;
     std::string name;
     std::string source_path;
+    std::string instruction_pointer_reference;
     int         line   = 0;
     int         column = 0;
 };
@@ -135,6 +136,24 @@ struct SDapEvaluateResponse {
     std::string result;
     std::string type;
     std::string error_message;
+};
+
+struct SDapDisassembleRequest {
+    std::string memory_reference;
+    std::size_t instruction_offset = 0;
+    std::size_t instruction_count  = 0;
+};
+
+struct SDapDisassembledInstruction {
+    std::string address;
+    std::string instruction;
+    std::string instruction_bytes;
+};
+
+struct SDapDisassembleResponse {
+    bool                                     success = false;
+    std::vector<SDapDisassembledInstruction> instructions;
+    std::string                              error_message;
 };
 
 struct SDapLaunchRequest {
@@ -227,6 +246,8 @@ class CDapDebugSession : public IDebugSession {
     static SDapContinueResponse          parseContinueResponseMessage(const std::string& response_message);
     static std::string                   buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request);
     static SDapEvaluateResponse          parseEvaluateResponseMessage(const std::string& response_message);
+    static std::string                   buildDisassembleRequestMessage(int sequence_number, const SDapDisassembleRequest& disassemble_request);
+    static SDapDisassembleResponse       parseDisassembleResponseMessage(const std::string& response_message);
     static std::string                   buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request);
     static std::string                   buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request);
     static std::string                   buildConfigurationDoneRequestMessage(int sequence_number);
@@ -245,6 +266,7 @@ class CDapDebugSession : public IDebugSession {
     SDapVariablesResponse                getVariables(const SDapVariablesRequest& variables_request);
     SDapContinueResponse                 continueExecution(const SDapContinueRequest& continue_request);
     SDapEvaluateResponse                 evaluate(const SDapEvaluateRequest& evaluate_request);
+    SDapDisassembleResponse              disassembleInstructions(const SDapDisassembleRequest& disassemble_request);
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);

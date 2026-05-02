@@ -1,0 +1,24 @@
+[session]
+mode = "mock"
+startup_focus = "memory"
+
+[views]
+show_memory = true
+show_disassembly = false
+
+[dap_launch]
+command = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/adapter/codelldb"
+liblldb_path = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/lldb/lib/liblldb.so"
+program = "./build/roundtable_dap_sample"
+working_directory = "."
+stop_on_entry = true
+continue_once = false
+
+[keybindings]
+focus_locals = "Space l"
+focus_memory = "Space m"
+focus_disassembly = "Space d"
+focus_watch_list = "Space w"
+toggle_memory = "Space t"
+toggle_disassembly = "Space a"
+toggle_shortcuts_help = "Space ?"

@@ -19,6 +19,16 @@
 
 namespace {
 
+    constexpr bool kEnableDapLogging = false;
+
+    void           logDapMessage(const char* prefix, const std::string& message) {
+        if (!kEnableDapLogging) {
+            return;
+        }
+
+        std::cerr << prefix << message << '\n';
+    }
+
     bool readFramedMessageFromFileDescriptor(int file_descriptor, std::string& pending_buffer, std::string& message, std::string& error_message);
 
 } // namespace
@@ -457,6 +467,12 @@ std::string CDapDebugSession::buildEvaluateRequestMessage(int sequence_number, c
         R"(","frameId":)" + std::to_string(evaluate_request.frame_id) + R"(,"context":")" + evaluate_request.context + R"("}})";
 }
 
+std::string CDapDebugSession::buildDisassembleRequestMessage(int sequence_number, const SDapDisassembleRequest& disassemble_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"disassemble","arguments":{"memoryReference":")" + disassemble_request.memory_reference +
+        R"(","instructionOffset":)" + std::to_string(disassemble_request.instruction_offset) + R"(,"instructionCount":)" + std::to_string(disassemble_request.instruction_count) +
+        "}}";
+}
+
 namespace {
 
     std::optional<std::string> extractJsonStringField(const std::string& response_message, const std::string& field_name) {
@@ -584,6 +600,11 @@ namespace {
         return address_stream.str();
     }
 
+    std::uint64_t parseAddressString(const std::string& address) {
+        std::size_t parsed_characters = 0;
+        return std::stoull(address, &parsed_characters, 0);
+    }
+
 } // namespace
 
 SDapReadMemoryResponse CDapDebugSession::parseReadMemoryResponseMessage(const std::string& response_message) {
@@ -699,6 +720,15 @@ SDapStackTraceResponse CDapDebugSession::parseStackTraceResponseMessage(const st
                     const auto name_value_end   = frame_message.find('"', name_value_start);
                     if (name_value_end != std::string::npos) {
                         stack_frame.name = frame_message.substr(name_value_start, name_value_end - name_value_start);
+                    }
+                }
+
+                const auto instruction_pointer_reference_position = frame_message.find(R"("instructionPointerReference":")");
+                if (instruction_pointer_reference_position != std::string::npos) {
+                    const auto value_start = instruction_pointer_reference_position + std::string(R"("instructionPointerReference":")").size();
+                    const auto value_end   = frame_message.find('"', value_start);
+                    if (value_end != std::string::npos) {
+                        stack_frame.instruction_pointer_reference = frame_message.substr(value_start, value_end - value_start);
                     }
                 }
 
@@ -854,6 +884,37 @@ SDapEvaluateResponse CDapDebugSession::parseEvaluateResponseMessage(const std::s
     return response;
 }
 
+SDapDisassembleResponse CDapDebugSession::parseDisassembleResponseMessage(const std::string& response_message) {
+    SDapDisassembleResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP disassemble response did not report success";
+        return response;
+    }
+
+    response.success = true;
+
+    for (const auto& instruction_message : extractTopLevelObjectsFromArray(response_message, "instructions")) {
+        SDapDisassembledInstruction instruction = {};
+
+        if (const auto address = extractJsonStringField(instruction_message, "address"); address.has_value()) {
+            instruction.address = address.value();
+        }
+        if (const auto text = extractJsonStringField(instruction_message, "instruction"); text.has_value()) {
+            instruction.instruction = text.value();
+        }
+        if (const auto bytes = extractJsonStringField(instruction_message, "instructionBytes"); bytes.has_value()) {
+            instruction.instruction_bytes = bytes.value();
+        }
+
+        if (!instruction.address.empty() || !instruction.instruction.empty()) {
+            response.instructions.push_back(std::move(instruction));
+        }
+    }
+
+    return response;
+}
+
 std::string CDapDebugSession::buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request) {
     std::string arguments_json = "[";
     for (std::size_t i = 0; i < launch_request.arguments.size(); ++i) {
@@ -970,7 +1031,7 @@ bool CDapDebugSession::launch(const SDapLaunchRequest& launch_request) {
             return false;
         }
 
-        std::cerr << "dap launch message: " << response_message << '\n';
+        logDapMessage("dap launch message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
         if (message.type == "event" && message.event_name == "initialized") {
             last_error_.clear();
@@ -1000,7 +1061,7 @@ bool CDapDebugSession::attach(const SDapAttachRequest& attach_request) {
             return false;
         }
 
-        std::cerr << "dap attach message: " << response_message << '\n';
+        logDapMessage("dap attach message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
         if (message.type == "event" && message.event_name == "initialized") {
@@ -1033,7 +1094,7 @@ bool CDapDebugSession::configurationDone() {
             return false;
         }
 
-        std::cerr << "dap configurationDone message: " << response_message << '\n';
+        logDapMessage("dap configurationDone message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
         if (message.type == "response" && message.command_name == "launch") {
             if (!message.success) {
@@ -1087,7 +1148,7 @@ bool CDapDebugSession::waitForStoppedEvent() {
             return false;
         }
 
-        std::cerr << "dap waitForStoppedEvent message: " << response_message << '\n';
+        logDapMessage("dap waitForStoppedEvent message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
         if (message.type == "response" && message.command_name == "launch") {
             if (!message.success) {
@@ -1142,7 +1203,7 @@ SDapThreadsResponse CDapDebugSession::getThreads() {
             };
         }
 
-        std::cerr << "dap threads message: " << response_message << '\n';
+        logDapMessage("dap threads message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
         if (message.type == "event") {
@@ -1185,7 +1246,7 @@ SDapStackTraceResponse CDapDebugSession::getStackTrace(const SDapStackTraceReque
             };
         }
 
-        std::cerr << "dap stackTrace message: " << response_message << '\n';
+        logDapMessage("dap stackTrace message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
         if (message.type == "event") {
@@ -1228,7 +1289,7 @@ SDapScopesResponse CDapDebugSession::getScopes(const SDapScopesRequest& scopes_r
             };
         }
 
-        std::cerr << "dap scopes message: " << response_message << '\n';
+        logDapMessage("dap scopes message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
         if (message.type == "event") {
@@ -1271,7 +1332,7 @@ SDapVariablesResponse CDapDebugSession::getVariables(const SDapVariablesRequest&
             };
         }
 
-        std::cerr << "dap variables message: " << response_message << '\n';
+        logDapMessage("dap variables message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
         if (message.type == "event") {
@@ -1311,7 +1372,7 @@ SDapContinueResponse CDapDebugSession::continueExecution(const SDapContinueReque
             };
         }
 
-        std::cerr << "dap continue message: " << response_message << '\n';
+        logDapMessage("dap continue message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
         if (message.type == "event") {
@@ -1366,7 +1427,7 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
             };
         }
 
-        std::cerr << "dap evaluate message: " << response_message << '\n';
+        logDapMessage("dap evaluate message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
         if (message.type == "event") {
@@ -1375,6 +1436,57 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
 
         if (message.type == "response" && (message.command_name == "evaluate" || message.command_name.empty())) {
             return parseEvaluateResponseMessage(response_message);
+        }
+    }
+}
+
+SDapDisassembleResponse CDapDebugSession::disassembleInstructions(const SDapDisassembleRequest& disassemble_request) {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .instructions  = {},
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    if (!adapter_capabilities_.supports_disassemble) {
+        return {
+            .success       = false,
+            .instructions  = {},
+            .error_message = "DAP adapter does not support disassemble",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildDisassembleRequestMessage(next_sequence_number_++, disassemble_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .instructions  = {},
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .instructions  = {},
+                .error_message = error_message,
+            };
+        }
+
+        logDapMessage("dap disassemble message: ", response_message);
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "disassemble") {
+            return parseDisassembleResponseMessage(response_message);
         }
     }
 }
@@ -1418,7 +1530,7 @@ std::vector<SLocalVariable> CDapDebugSession::getLocals(const SDebugSelection& s
         return {};
     }
 
-    const auto  locals_scope_iterator = std::find_if(scopes_response.scopes.begin(), scopes_response.scopes.end(), [](const SDapScope& scope) { return scope.name == "Locals"; });
+    const auto  locals_scope_iterator = std::ranges::find_if(scopes_response.scopes, [](const SDapScope& scope) { return scope.name == "Locals"; });
 
     const auto& selected_scope = locals_scope_iterator != scopes_response.scopes.end() ? *locals_scope_iterator : scopes_response.scopes.front();
     if (selected_scope.variables_reference == 0) {
@@ -1485,35 +1597,46 @@ SMemoryReadResult CDapDebugSession::readMemory(const SDebugSelection& selection,
         };
     }
 
-    std::string response_message;
-    if (!transport_->readMessage(response_message, error_message)) {
-        last_error_ = error_message;
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            last_error_ = error_message;
+            return {
+                .start_address = request.start_address,
+                .memory_bytes  = {},
+                .bytes_per_row = request.bytes_per_row,
+                .error_message = error_message,
+            };
+        }
+
+        logDapMessage("dap readMemory message: ", response_message);
+        const auto message = parseProtocolMessage(response_message);
+        if (message.type == "event") {
+            continue;
+        }
+        if (!(message.type == "response" && message.command_name == "readMemory")) {
+            continue;
+        }
+
+        const auto response = parseReadMemoryResponseMessage(response_message);
+        if (!response.success) {
+            last_error_ = response.error_message;
+            return {
+                .start_address = request.start_address,
+                .memory_bytes  = {},
+                .bytes_per_row = request.bytes_per_row,
+                .error_message = response.error_message,
+            };
+        }
+
+        last_error_.clear();
         return {
             .start_address = request.start_address,
-            .memory_bytes  = {},
+            .memory_bytes  = response.memory_bytes,
             .bytes_per_row = request.bytes_per_row,
-            .error_message = error_message,
+            .error_message = "",
         };
     }
-
-    const auto response = parseReadMemoryResponseMessage(response_message);
-    if (!response.success) {
-        last_error_ = response.error_message;
-        return {
-            .start_address = request.start_address,
-            .memory_bytes  = {},
-            .bytes_per_row = request.bytes_per_row,
-            .error_message = response.error_message,
-        };
-    }
-
-    last_error_.clear();
-    return {
-        .start_address = request.start_address,
-        .memory_bytes  = response.memory_bytes,
-        .bytes_per_row = request.bytes_per_row,
-        .error_message = "",
-    };
 }
 
 std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) {
@@ -1587,8 +1710,48 @@ std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelectio
 
 std::vector<SDisassemblyInstruction> CDapDebugSession::disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) {
     static_cast<void>(selection);
-    static_cast<void>(start_address);
-    static_cast<void>(instruction_count);
 
-    return {};
+    const auto response = disassembleInstructions({
+        .memory_reference   = formatMemoryReference(start_address),
+        .instruction_offset = 0,
+        .instruction_count  = instruction_count,
+    });
+
+    if (!response.success) {
+        return {};
+    }
+
+    std::vector<SDisassemblyInstruction> instructions;
+    instructions.reserve(response.instructions.size());
+
+    for (const auto& dap_instruction : response.instructions) {
+        SDisassemblyInstruction instruction = {};
+
+        if (!dap_instruction.address.empty()) {
+            try {
+                instruction.address = parseAddressString(dap_instruction.address);
+            } catch (const std::exception&) { instruction.address = start_address; }
+        } else {
+            instruction.address = start_address;
+        }
+
+        const auto operand_separator = dap_instruction.instruction.find_first_of(" \t");
+        if (operand_separator == std::string::npos) {
+            instruction.mnemonic = dap_instruction.instruction;
+        } else {
+            instruction.mnemonic      = dap_instruction.instruction.substr(0, operand_separator);
+            const auto operands_start = dap_instruction.instruction.find_first_not_of(" \t", operand_separator);
+            if (operands_start != std::string::npos) {
+                instruction.operands = dap_instruction.instruction.substr(operands_start);
+            }
+        }
+
+        if (!dap_instruction.instruction_bytes.empty()) {
+            instruction.comment = dap_instruction.instruction_bytes;
+        }
+
+        instructions.push_back(std::move(instruction));
+    }
+
+    return instructions;
 }
