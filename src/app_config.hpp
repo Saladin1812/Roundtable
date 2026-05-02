@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "app_theme.hpp"
 #include "pane_state.hpp"
 
 enum class eSessionMode : std::uint8_t {
@@ -25,6 +26,7 @@ struct SAppConfig {
     eFocusPane               startup_focus         = eFocusPane::MEMORY_VIEW;
     bool                     show_memory_view      = true;
     bool                     show_disassembly_view = false;
+    eThemePreset             theme_preset          = eThemePreset::DEFAULT;
     SDapLaunchConfig         dap_launch            = {};
     std::vector<SKeybinding> keybindings           = defaultKeybindings();
 };

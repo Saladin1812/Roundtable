@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <ftxui/component/component.hpp>
@@ -10,6 +12,7 @@
 #include <ftxui/dom/elements.hpp>
 
 #include "app_config.hpp"
+#include "app_theme.hpp"
 #include "dap_session.hpp"
 #include "debug_session.hpp"
 #include "memory_selection.hpp"
@@ -57,36 +60,49 @@ namespace {
         std::string                    status_message;
     };
 
-    ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused) {
-        using namespace ftxui;
+    struct SLeaderHintRow {
+        std::string keys;
+        std::string description;
+        eCommand    command       = eCommand::FOCUS_MEMORY;
+        bool        pane_specific = false;
+    };
 
-        Elements rows;
-        Element  title = text(pane.title) | bold;
-        if (is_focused) {
-            title = title | inverted;
-        }
-
-        rows.push_back(title);
-        rows.push_back(separator());
-
-        if (pane.rows.empty()) {
-            rows.push_back(text("(empty)"));
-        } else {
-            for (std::size_t i = 0; i < pane.rows.size(); ++i) {
-                Element data_row = text(pane.rows[i]);
-                if (is_focused && pane.selected_index == i) {
-                    rows.push_back(data_row | inverted);
-                } else {
-                    rows.push_back(data_row);
+    int commandPriority(eCommand command, eFocusPane focused_pane) {
+        switch (focused_pane) {
+            case eFocusPane::WATCH_LIST:
+                if (command == eCommand::EDIT_WATCH || command == eCommand::REMOVE_WATCH || command == eCommand::ADD_WATCH) {
+                    return 0;
                 }
-            }
+                if (command == eCommand::SET_MEMORY_TARGET) {
+                    return 1;
+                }
+                break;
+            case eFocusPane::LOCALS:
+                if (command == eCommand::SET_MEMORY_TARGET || command == eCommand::FOCUS_MEMORY) {
+                    return 1;
+                }
+                break;
+            case eFocusPane::MEMORY_VIEW:
+                if (command == eCommand::SET_MEMORY_TARGET || command == eCommand::TOGGLE_DISASSEMBLY) {
+                    return 0;
+                }
+                break;
+            case eFocusPane::DISASSEMBLY_VIEW:
+                if (command == eCommand::TOGGLE_MEMORY || command == eCommand::FOCUS_MEMORY) {
+                    return 0;
+                }
+                break;
         }
 
-        return vbox(rows) | border;
+        return 2;
     }
 
-    std::vector<std::string> buildLeaderHints(const std::vector<SKeybinding>& keybindings) {
-        std::vector<std::string> hints;
+    bool isPaneSpecificCommand(eCommand command, eFocusPane focused_pane) {
+        return commandPriority(command, focused_pane) == 0;
+    }
+
+    std::vector<SLeaderHintRow> buildLeaderHintRows(const std::vector<SKeybinding>& keybindings, eFocusPane focused_pane) {
+        std::vector<SLeaderHintRow> hints;
         hints.reserve(keybindings.size());
 
         for (const auto& keybinding : keybindings) {
@@ -94,10 +110,86 @@ namespace {
                 continue;
             }
 
-            hints.push_back(keybinding.keys.substr(6) + " " + commandDescription(keybinding.command));
+            hints.push_back({
+                .keys          = keybinding.keys.substr(6),
+                .description   = commandDescription(keybinding.command),
+                .command       = keybinding.command,
+                .pane_specific = isPaneSpecificCommand(keybinding.command, focused_pane),
+            });
         }
 
+        std::ranges::stable_sort(hints, [&](const SLeaderHintRow& left, const SLeaderHintRow& right) {
+            return commandPriority(left.command, focused_pane) < commandPriority(right.command, focused_pane);
+        });
+
         return hints;
+    }
+
+    std::optional<std::tuple<std::string, std::string, std::string>> splitMemoryRow(const std::string& row) {
+        const auto first_separator = row.find("  ");
+        if (first_separator == std::string::npos) {
+            return std::nullopt;
+        }
+
+        const auto second_separator = row.find("  ", first_separator + 2);
+        if (second_separator == std::string::npos) {
+            return std::nullopt;
+        }
+
+        return std::make_tuple(row.substr(0, first_separator), row.substr(first_separator + 2, second_separator - (first_separator + 2)), row.substr(second_separator + 2));
+    }
+
+    ftxui::Element renderPaneRow(const std::string& row, bool is_selected, const SAppTheme& theme, bool is_memory_pane) {
+        using namespace ftxui;
+
+        Element row_element;
+        if (is_memory_pane) {
+            const auto memory_parts = splitMemoryRow(row);
+            if (memory_parts.has_value()) {
+                const auto& [address, hex_bytes, ascii] = memory_parts.value();
+                row_element                             = hbox({
+                    text(address) | color(theme.memory_address),
+                    text("  "),
+                    text(hex_bytes) | color(theme.memory_hex),
+                    text("  "),
+                    text(ascii) | color(theme.memory_ascii),
+                });
+            } else {
+                row_element = text(row) | color(theme.memory_ascii);
+            }
+        } else {
+            row_element = text(row) | color(theme.chrome);
+        }
+
+        if (is_selected) {
+            row_element = row_element | bgcolor(theme.selected_background) | color(theme.selected_foreground);
+        }
+
+        return row_element;
+    }
+
+    ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused, const SAppTheme& theme) {
+        using namespace ftxui;
+
+        Elements rows;
+        Element  title = text(pane.title) | bold | color(theme.title);
+        if (is_focused) {
+            title = title | bgcolor(theme.selected_background) | color(theme.selected_foreground);
+        }
+
+        rows.push_back(title);
+        rows.push_back(separator());
+
+        if (pane.rows.empty()) {
+            rows.push_back(text("(empty)") | color(theme.chrome));
+        } else {
+            const bool is_memory_pane = pane.title.find("Memory") != std::string::npos;
+            for (std::size_t i = 0; i < pane.rows.size(); ++i) {
+                rows.push_back(renderPaneRow(pane.rows[i], is_focused && pane.selected_index == i, theme, is_memory_pane));
+            }
+        }
+
+        return vbox(rows) | border | color(is_focused ? theme.accent : theme.chrome);
     }
 
     std::optional<eCommand> findCommandForKeys(const std::vector<SKeybinding>& keybindings, const std::string& keys) {
@@ -109,21 +201,29 @@ namespace {
         return keybinding_iterator->command;
     }
 
-    ftxui::Element renderShortcutsOverlay(const std::vector<SKeybinding>& keybindings) {
+    ftxui::Element renderShortcutsOverlay(const std::vector<SKeybinding>& keybindings, const SAppTheme& theme) {
         using namespace ftxui;
 
         Elements rows = {
-            text(" Roundtable Shortcuts ") | bold, separator(), text("Tab  Cycle focus"), text("r  Refresh panes"), text("q  Quit"),
+            text(" Roundtable Shortcuts ") | bold | color(theme.title),
+            separator(),
+            text("Tab  Cycle focus") | color(theme.chrome),
+            text("r  Refresh panes") | color(theme.chrome),
+            text("q  Quit") | color(theme.chrome),
         };
 
         for (const auto& keybinding : keybindings) {
-            rows.push_back(text(keybinding.keys + "  " + commandDescription(keybinding.command)));
+            rows.push_back(hbox({
+                text(keybinding.keys) | color(theme.hint_key),
+                text("  "),
+                text(commandDescription(keybinding.command)) | color(theme.hint_description),
+            }));
         }
 
-        return window(text(" Shortcuts "), vbox(rows)) | size(WIDTH, GREATER_THAN, 48);
+        return window(text(" Shortcuts ") | color(theme.title), vbox(rows)) | size(WIDTH, GREATER_THAN, 48) | color(theme.overlay_border);
     }
 
-    ftxui::Element renderPromptOverlay(const SPromptState& prompt_state) {
+    ftxui::Element renderPromptOverlay(const SPromptState& prompt_state, const SAppTheme& theme) {
         using namespace ftxui;
 
         std::string title;
@@ -141,20 +241,47 @@ namespace {
                 title = " Memory Target ";
                 hint  = "Enter address or expression, empty clears override";
                 break;
-            case ePromptMode::NONE: return text("");
+            case ePromptMode::NONE: return text("") | color(theme.chrome);
         }
 
-        return window(text(title),
+        return window(text(title) | color(theme.title),
                       vbox({
-                          text(hint),
+                          text(hint) | color(theme.chrome),
                           separator(),
-                          text(buildPromptDisplay(prompt_state)),
+                          text(buildPromptDisplay(prompt_state)) | color(theme.accent),
                       })) |
-            size(WIDTH, GREATER_THAN, 48);
+            size(WIDTH, GREATER_THAN, 48) | color(theme.overlay_border);
+    }
+
+    ftxui::Element renderLeaderPopup(const std::vector<SKeybinding>& keybindings, eFocusPane focused_pane, const SAppTheme& theme) {
+        using namespace ftxui;
+
+        const auto hints = buildLeaderHintRows(keybindings, focused_pane);
+        Elements   left_column;
+        Elements   right_column;
+        left_column.push_back(text(" Pane-first ") | bold | color(theme.title));
+        right_column.push_back(text(" Global ") | bold | color(theme.title));
+
+        for (const auto& hint : hints) {
+            Elements& target_column = hint.pane_specific ? left_column : right_column;
+            target_column.push_back(hbox({
+                text(hint.keys) | color(hint.pane_specific ? theme.hint_specific_key : theme.hint_key),
+                text("  "),
+                text(hint.description) | color(hint.pane_specific ? theme.hint_specific_text : theme.hint_description),
+            }));
+        }
+
+        return window(text(" Leader ") | color(theme.title),
+                      hbox({
+                          vbox(left_column) | flex,
+                          separator(),
+                          vbox(right_column) | flex,
+                      })) |
+            size(WIDTH, GREATER_THAN, 58) | color(theme.overlay_border);
     }
 
     ftxui::Element renderAuxiliaryViews(const SViewVisibilityState& view_visibility, const SSelectablePaneState& memory_view_pane, const SSelectablePaneState& disassembly_pane,
-                                        eFocusPane focused_pane) {
+                                        eFocusPane focused_pane, const SAppTheme& theme) {
         using namespace ftxui;
 
         const bool show_memory       = view_visibility.show_memory_view;
@@ -164,18 +291,18 @@ namespace {
 
         if (show_memory && show_disassembly) {
             return hbox({
-                       renderSelectablePane(memory_view_pane, memory_is_focused) | flex,
-                       renderSelectablePane(disassembly_pane, disasm_is_focused) | flex,
+                       renderSelectablePane(memory_view_pane, memory_is_focused, theme) | flex,
+                       renderSelectablePane(disassembly_pane, disasm_is_focused, theme) | flex,
                    }) |
                 flex;
         }
 
         if (show_memory) {
-            return renderSelectablePane(memory_view_pane, memory_is_focused) | flex;
+            return renderSelectablePane(memory_view_pane, memory_is_focused, theme) | flex;
         }
 
         if (show_disassembly) {
-            return renderSelectablePane(disassembly_pane, disasm_is_focused) | flex;
+            return renderSelectablePane(disassembly_pane, disasm_is_focused, theme) | flex;
         }
 
         return renderSelectablePane(
@@ -183,7 +310,7 @@ namespace {
                        .title = " Views ",
                        .rows  = {"Enable Memory or Disassembly with Space t / Space a"},
                    },
-                   false) |
+                   false, theme) |
             flex;
     }
 
@@ -423,6 +550,7 @@ int main() {
     using namespace ftxui;
 
     const SAppConfig        app_config                   = loadAppConfig("roundtable.toml");
+    const SAppTheme         app_theme                    = buildTheme(app_config.theme_preset);
     SSessionBootstrapResult bootstrap_result             = bootstrapSession(app_config);
     auto&                   debug_session                = *bootstrap_result.session;
     SDebugSelection         debug_selection              = bootstrap_result.selection;
@@ -465,31 +593,23 @@ int main() {
                     focused_pane, watch_expressions, manual_memory_target);
 
     auto renderer = Renderer([&] {
-        Element  locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS);
-        Element  watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST);
-        Element  auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane);
+        Element  locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
+        Element  watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
+        Element  auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme);
 
         Elements status_items = {
-            text(" Roundtable ") | inverted,
+            text(" Roundtable ") | bgcolor(app_theme.selected_background) | color(app_theme.selected_foreground),
             separator(),
-            text(" " + session_status + " "),
+            text(" " + session_status + " ") | color(app_theme.chrome),
             separator(),
-            text(" Tab cycle "),
+            text(" Tab cycle ") | color(app_theme.chrome),
             separator(),
-            text(" r refresh "),
+            text(" r refresh ") | color(app_theme.chrome),
             separator(),
-            text(" Space commands "),
+            text(" Space commands ") | color(app_theme.accent),
             separator(),
-            text(" q quit "),
+            text(" q quit ") | color(app_theme.chrome),
         };
-
-        if (leader_pending) {
-            const auto hints = buildLeaderHints(keybindings);
-            for (const auto& hint : hints) {
-                status_items.push_back(separator());
-                status_items.push_back(text(hint));
-            }
-        }
 
         Element content = vbox({
             hbox({
@@ -497,20 +617,31 @@ int main() {
                 auxiliary_views | flex,
                 watch_list | size(WIDTH, EQUAL, 28),
             }) | flex,
-            hbox(status_items) | border,
+            hbox(status_items) | border | color(app_theme.chrome),
         });
 
         if (view_visibility.show_shortcuts_overlay) {
             content = dbox({
                 content,
-                renderShortcutsOverlay(keybindings) | center,
+                renderShortcutsOverlay(keybindings, app_theme) | center,
+            });
+        }
+
+        if (leader_pending) {
+            content = dbox({
+                content,
+                vbox({
+                    filler(),
+                    renderLeaderPopup(keybindings, focused_pane, app_theme) | center,
+                    filler() | size(HEIGHT, EQUAL, 5),
+                }),
             });
         }
 
         if (prompt_state.mode != ePromptMode::NONE) {
             content = dbox({
                 content,
-                renderPromptOverlay(prompt_state) | center,
+                renderPromptOverlay(prompt_state, app_theme) | center,
             });
         }
 

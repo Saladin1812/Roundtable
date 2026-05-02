@@ -21,7 +21,7 @@ std::vector<SLocalVariable> CMockDebugSession::getLocals(const SDebugSelection& 
             .name                = "a",
             .value               = "42",
             .type                = "int",
-            .memory_reference    = "",
+            .memory_reference    = "0x2000",
             .variables_reference = 0,
         },
         {
@@ -37,16 +37,34 @@ std::vector<SLocalVariable> CMockDebugSession::getLocals(const SDebugSelection& 
 SMemoryReadResult CMockDebugSession::readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) {
     static_cast<void>(selection);
 
-    static const std::vector<std::uint8_t> mock_memory_bytes = {
+    const std::vector<std::uint8_t> pointer_memory = {
         0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21, 0x00, 0x41, 0x42, 0x43, 0xDE, 0xAD, 0xBE, 0xEF,
         0x10, 0x20, 0x30, 0x40, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA, 0x99, 0x88,
     };
+    const std::vector<std::uint8_t> integer_memory = {
+        0x2A,
+        0x00,
+        0x00,
+        0x00,
+    };
+    const std::vector<std::uint8_t> pointer_slot_memory = {
+        0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    };
 
-    const std::size_t clamped_byte_count = std::min(request.byte_count, mock_memory_bytes.size());
+    std::vector<std::uint8_t> selected_memory;
+    if (request.start_address == 0x2000) {
+        selected_memory = integer_memory;
+    } else if (request.start_address == 0x3000) {
+        selected_memory = pointer_slot_memory;
+    } else {
+        selected_memory = pointer_memory;
+    }
+
+    const std::size_t clamped_byte_count = std::min(request.byte_count, selected_memory.size());
 
     return {
         .start_address = request.start_address,
-        .memory_bytes  = std::vector<std::uint8_t>(mock_memory_bytes.begin(), mock_memory_bytes.begin() + clamped_byte_count),
+        .memory_bytes  = std::vector<std::uint8_t>(selected_memory.begin(), selected_memory.begin() + clamped_byte_count),
         .bytes_per_row = request.bytes_per_row,
         .error_message = "",
     };

@@ -115,6 +115,13 @@ SAppConfig loadAppConfig(const std::string& config_path) {
             continue;
         }
 
+        if (current_section == "theme") {
+            if (key == "preset") {
+                config.theme_preset = parseThemePreset(unquote(value), config.theme_preset);
+            }
+            continue;
+        }
+
         if (current_section == "session") {
             if (key == "mode") {
                 config.session_mode = parseSessionMode(unquote(value), config.session_mode);

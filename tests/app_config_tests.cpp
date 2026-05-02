@@ -13,6 +13,7 @@ TEST_CASE("loadAppConfig returns defaults when config file is missing") {
     CHECK(config.startup_focus == eFocusPane::MEMORY_VIEW);
     CHECK(config.show_memory_view);
     CHECK_FALSE(config.show_disassembly_view);
+    CHECK(config.theme_preset == eThemePreset::DEFAULT);
     CHECK(config.dap_launch.command.empty());
     REQUIRE_FALSE(config.keybindings.empty());
 }
@@ -29,6 +30,9 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "[views]\n";
         config_stream << "show_memory = false\n";
         config_stream << "show_disassembly = true\n";
+        config_stream << "\n";
+        config_stream << "[theme]\n";
+        config_stream << "preset = \"forest\"\n";
         config_stream << "\n";
         config_stream << "[dap_launch]\n";
         config_stream << "command = \"/tmp/codelldb\"\n";
@@ -49,6 +53,7 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     CHECK(config.startup_focus == eFocusPane::DISASSEMBLY_VIEW);
     CHECK_FALSE(config.show_memory_view);
     CHECK(config.show_disassembly_view);
+    CHECK(config.theme_preset == eThemePreset::FOREST);
     CHECK(config.dap_launch.command == "/tmp/codelldb");
     CHECK(config.dap_launch.liblldb_path == "/tmp/liblldb.so");
     CHECK(config.dap_launch.program == "/tmp/sample");

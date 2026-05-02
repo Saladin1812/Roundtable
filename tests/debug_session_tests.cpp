@@ -31,7 +31,28 @@ TEST_CASE("mock debug session reads memory for the current selection") {
 
     CHECK(memory_read_result.start_address == 0x7000);
     REQUIRE(memory_read_result.memory_bytes.size() == 8);
+    CHECK(memory_read_result.memory_bytes[0] == 0x48);
+    CHECK(memory_read_result.memory_bytes[1] == 0x65);
     CHECK(memory_read_result.error_message.empty());
+}
+
+TEST_CASE("mock debug session returns variable-shaped memory for integer locals") {
+    CMockDebugSession       debug_session   = {};
+    const SDebugSelection   debug_selection = {};
+
+    const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
+                                                                          {
+                                                                              .start_address    = 0x2000,
+                                                                              .memory_reference = "",
+                                                                              .byte_count       = 4,
+                                                                              .bytes_per_row    = 4,
+                                                                          });
+
+    REQUIRE(memory_read_result.memory_bytes.size() == 4);
+    CHECK(memory_read_result.memory_bytes[0] == 0x2A);
+    CHECK(memory_read_result.memory_bytes[1] == 0x00);
+    CHECK(memory_read_result.memory_bytes[2] == 0x00);
+    CHECK(memory_read_result.memory_bytes[3] == 0x00);
 }
 
 TEST_CASE("mock debug session returns locals for the current selection") {

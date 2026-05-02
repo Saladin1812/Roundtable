@@ -138,6 +138,7 @@ TEST_CASE("mock memory provider returns requested byte count") {
     CHECK(memory_read_result.start_address == 0x4000);
     CHECK(memory_read_result.bytes_per_row == 8);
     CHECK(memory_read_result.memory_bytes.size() == 16);
+    CHECK(memory_read_result.memory_bytes[0] == 0x48);
     CHECK(memory_read_result.error_message.empty());
 }
 
@@ -185,6 +186,7 @@ TEST_CASE("buildMemoryReadRequest uses evaluated address for a selected non-poin
     const SMemoryReadRequest          memory_read_request = buildMemoryReadRequest(debug_session, debug_selection, locals, 0, 0x1000);
 
     CHECK(memory_read_request.start_address == 0x2000);
+    CHECK(memory_read_request.memory_reference == "0x2000");
     CHECK(memory_read_request.byte_count == 40);
     CHECK(memory_read_request.bytes_per_row == 8);
 }

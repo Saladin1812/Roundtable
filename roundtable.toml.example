@@ -6,6 +6,9 @@ startup_focus = "memory"
 show_memory = true
 show_disassembly = false
 
+[theme]
+preset = "default"
+
 [dap_launch]
 command = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/adapter/codelldb"
 liblldb_path = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/lldb/lib/liblldb.so"
