@@ -22,6 +22,7 @@ namespace {
     enum class ePromptMode : std::uint8_t {
         NONE,
         ADD_WATCH,
+        EDIT_WATCH,
         MEMORY_TARGET,
     };
 
@@ -113,6 +114,10 @@ namespace {
             case ePromptMode::ADD_WATCH:
                 title = " Add Watch ";
                 hint  = "Enter expression and press Return";
+                break;
+            case ePromptMode::EDIT_WATCH:
+                title = " Edit Watch ";
+                hint  = "Update expression and press Return";
                 break;
             case ePromptMode::MEMORY_TARGET:
                 title = " Memory Target ";
@@ -507,6 +512,11 @@ int main() {
                         watch_expressions.push_back({.expression = prompt_state.input});
                         focused_pane = eFocusPane::WATCH_LIST;
                     }
+                } else if (prompt_state.mode == ePromptMode::EDIT_WATCH) {
+                    if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size() && !prompt_state.input.empty()) {
+                        watch_expressions[watch_list_pane.selected_index].expression = prompt_state.input;
+                        focused_pane                                                 = eFocusPane::WATCH_LIST;
+                    }
                 } else if (prompt_state.mode == ePromptMode::MEMORY_TARGET) {
                     manual_memory_target = prompt_state.input;
                     focused_pane         = eFocusPane::MEMORY_VIEW;
@@ -565,6 +575,28 @@ int main() {
                             .mode  = ePromptMode::ADD_WATCH,
                             .input = "",
                         };
+                        return true;
+                    }
+                    if (command.value() == eCommand::EDIT_WATCH) {
+                        if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
+                            prompt_state = {
+                                .mode  = ePromptMode::EDIT_WATCH,
+                                .input = watch_expressions[watch_list_pane.selected_index].expression,
+                            };
+                            return true;
+                        }
+                        return true;
+                    }
+                    if (command.value() == eCommand::REMOVE_WATCH) {
+                        if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
+                            watch_expressions.erase(watch_expressions.begin() + static_cast<std::ptrdiff_t>(watch_list_pane.selected_index));
+                            if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
+                                --watch_list_pane.selected_index;
+                            }
+                            focused_pane = eFocusPane::WATCH_LIST;
+                            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
+                        }
                         return true;
                     }
                     if (command.value() == eCommand::SET_MEMORY_TARGET) {

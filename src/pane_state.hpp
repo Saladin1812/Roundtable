@@ -20,6 +20,8 @@ enum class eCommand : std::uint8_t {
     FOCUS_DISASSEMBLY,
     FOCUS_WATCH_LIST,
     ADD_WATCH,
+    EDIT_WATCH,
+    REMOVE_WATCH,
     SET_MEMORY_TARGET,
     TOGGLE_MEMORY,
     TOGGLE_DISASSEMBLY,

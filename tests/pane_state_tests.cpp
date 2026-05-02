@@ -46,6 +46,10 @@ TEST_CASE("parseCommandName returns commands for known names") {
     CHECK(parseCommandName("focus_memory").value() == eCommand::FOCUS_MEMORY);
     REQUIRE(parseCommandName("add_watch").has_value());
     CHECK(parseCommandName("add_watch").value() == eCommand::ADD_WATCH);
+    REQUIRE(parseCommandName("edit_watch").has_value());
+    CHECK(parseCommandName("edit_watch").value() == eCommand::EDIT_WATCH);
+    REQUIRE(parseCommandName("remove_watch").has_value());
+    CHECK(parseCommandName("remove_watch").value() == eCommand::REMOVE_WATCH);
     REQUIRE(parseCommandName("set_memory_target").has_value());
     CHECK(parseCommandName("set_memory_target").value() == eCommand::SET_MEMORY_TARGET);
     CHECK_FALSE(parseCommandName("missing_command").has_value());

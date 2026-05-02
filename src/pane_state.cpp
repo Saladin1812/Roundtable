@@ -88,6 +88,8 @@ void executeCommand(eCommand command, eFocusPane& focused_pane, SViewVisibilityS
             break;
         case eCommand::FOCUS_WATCH_LIST: focused_pane = eFocusPane::WATCH_LIST; break;
         case eCommand::ADD_WATCH: break;
+        case eCommand::EDIT_WATCH: break;
+        case eCommand::REMOVE_WATCH: break;
         case eCommand::SET_MEMORY_TARGET: break;
         case eCommand::TOGGLE_MEMORY: view_visibility.show_memory_view = !view_visibility.show_memory_view; break;
         case eCommand::TOGGLE_DISASSEMBLY: view_visibility.show_disassembly_view = !view_visibility.show_disassembly_view; break;
@@ -113,6 +115,12 @@ std::optional<eCommand> parseCommandName(const std::string& command_name) {
     if (command_name == "add_watch") {
         return eCommand::ADD_WATCH;
     }
+    if (command_name == "edit_watch") {
+        return eCommand::EDIT_WATCH;
+    }
+    if (command_name == "remove_watch") {
+        return eCommand::REMOVE_WATCH;
+    }
     if (command_name == "set_memory_target") {
         return eCommand::SET_MEMORY_TARGET;
     }
@@ -136,6 +144,8 @@ std::string commandDescription(eCommand command) {
         case eCommand::FOCUS_DISASSEMBLY: return "Focus Disassembly";
         case eCommand::FOCUS_WATCH_LIST: return "Focus Watch List";
         case eCommand::ADD_WATCH: return "Add Watch";
+        case eCommand::EDIT_WATCH: return "Edit Watch";
+        case eCommand::REMOVE_WATCH: return "Remove Watch";
         case eCommand::SET_MEMORY_TARGET: return "Set Memory Target";
         case eCommand::TOGGLE_MEMORY: return "Toggle Memory View";
         case eCommand::TOGGLE_DISASSEMBLY: return "Toggle Disassembly View";
@@ -152,6 +162,8 @@ std::vector<SKeybinding> defaultKeybindings() {
         {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},
         {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},
         {.keys = "Space n", .command = eCommand::ADD_WATCH},
+        {.keys = "Space e", .command = eCommand::EDIT_WATCH},
+        {.keys = "Space x", .command = eCommand::REMOVE_WATCH},
         {.keys = "Space g", .command = eCommand::SET_MEMORY_TARGET},
         {.keys = "Space t", .command = eCommand::TOGGLE_MEMORY},
         {.keys = "Space a", .command = eCommand::TOGGLE_DISASSEMBLY},
