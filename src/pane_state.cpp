@@ -87,6 +87,8 @@ void executeCommand(eCommand command, eFocusPane& focused_pane, SViewVisibilityS
             focused_pane                          = eFocusPane::DISASSEMBLY_VIEW;
             break;
         case eCommand::FOCUS_WATCH_LIST: focused_pane = eFocusPane::WATCH_LIST; break;
+        case eCommand::ADD_WATCH: break;
+        case eCommand::SET_MEMORY_TARGET: break;
         case eCommand::TOGGLE_MEMORY: view_visibility.show_memory_view = !view_visibility.show_memory_view; break;
         case eCommand::TOGGLE_DISASSEMBLY: view_visibility.show_disassembly_view = !view_visibility.show_disassembly_view; break;
         case eCommand::TOGGLE_SHORTCUTS_HELP: view_visibility.show_shortcuts_overlay = !view_visibility.show_shortcuts_overlay; break;
@@ -108,6 +110,12 @@ std::optional<eCommand> parseCommandName(const std::string& command_name) {
     if (command_name == "focus_watch_list") {
         return eCommand::FOCUS_WATCH_LIST;
     }
+    if (command_name == "add_watch") {
+        return eCommand::ADD_WATCH;
+    }
+    if (command_name == "set_memory_target") {
+        return eCommand::SET_MEMORY_TARGET;
+    }
     if (command_name == "toggle_memory") {
         return eCommand::TOGGLE_MEMORY;
     }
@@ -127,6 +135,8 @@ std::string commandDescription(eCommand command) {
         case eCommand::FOCUS_MEMORY: return "Focus Memory";
         case eCommand::FOCUS_DISASSEMBLY: return "Focus Disassembly";
         case eCommand::FOCUS_WATCH_LIST: return "Focus Watch List";
+        case eCommand::ADD_WATCH: return "Add Watch";
+        case eCommand::SET_MEMORY_TARGET: return "Set Memory Target";
         case eCommand::TOGGLE_MEMORY: return "Toggle Memory View";
         case eCommand::TOGGLE_DISASSEMBLY: return "Toggle Disassembly View";
         case eCommand::TOGGLE_SHORTCUTS_HELP: return "Toggle Shortcuts Help";
@@ -137,9 +147,14 @@ std::string commandDescription(eCommand command) {
 
 std::vector<SKeybinding> defaultKeybindings() {
     return {
-        {.keys = "Space l", .command = eCommand::FOCUS_LOCALS},          {.keys = "Space m", .command = eCommand::FOCUS_MEMORY},
-        {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},     {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},
-        {.keys = "Space t", .command = eCommand::TOGGLE_MEMORY},         {.keys = "Space a", .command = eCommand::TOGGLE_DISASSEMBLY},
+        {.keys = "Space l", .command = eCommand::FOCUS_LOCALS},
+        {.keys = "Space m", .command = eCommand::FOCUS_MEMORY},
+        {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},
+        {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},
+        {.keys = "Space n", .command = eCommand::ADD_WATCH},
+        {.keys = "Space g", .command = eCommand::SET_MEMORY_TARGET},
+        {.keys = "Space t", .command = eCommand::TOGGLE_MEMORY},
+        {.keys = "Space a", .command = eCommand::TOGGLE_DISASSEMBLY},
         {.keys = "Space ?", .command = eCommand::TOGGLE_SHORTCUTS_HELP},
     };
 }

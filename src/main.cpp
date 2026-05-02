@@ -19,6 +19,17 @@
 
 namespace {
 
+    enum class ePromptMode : std::uint8_t {
+        NONE,
+        ADD_WATCH,
+        MEMORY_TARGET,
+    };
+
+    struct SPromptState {
+        ePromptMode mode = ePromptMode::NONE;
+        std::string input;
+    };
+
     struct SSessionBootstrapResult {
         std::unique_ptr<IDebugSession> session;
         SDebugSelection                selection;
@@ -91,6 +102,32 @@ namespace {
         }
 
         return window(text(" Shortcuts "), vbox(rows)) | size(WIDTH, GREATER_THAN, 48);
+    }
+
+    ftxui::Element renderPromptOverlay(const SPromptState& prompt_state) {
+        using namespace ftxui;
+
+        std::string title;
+        std::string hint;
+        switch (prompt_state.mode) {
+            case ePromptMode::ADD_WATCH:
+                title = " Add Watch ";
+                hint  = "Enter expression and press Return";
+                break;
+            case ePromptMode::MEMORY_TARGET:
+                title = " Memory Target ";
+                hint  = "Enter address or expression, empty clears override";
+                break;
+            case ePromptMode::NONE: return text("");
+        }
+
+        return window(text(title),
+                      vbox({
+                          text(hint),
+                          separator(),
+                          text("> " + prompt_state.input),
+                      })) |
+            size(WIDTH, GREATER_THAN, 48);
     }
 
     ftxui::Element renderAuxiliaryViews(const SViewVisibilityState& view_visibility, const SSelectablePaneState& memory_view_pane, const SSelectablePaneState& disassembly_pane,
@@ -283,17 +320,40 @@ namespace {
 
     void refreshPaneRows(IDebugSession& debug_session, const SDebugSelection& debug_selection, SSelectablePaneState& locals_pane, SSelectablePaneState& memory_view_pane,
                          SSelectablePaneState& disassembly_pane, SSelectablePaneState& watch_list_pane, std::uint64_t disassembly_start_address,
-                         const std::string& disassembly_memory_reference, eFocusPane focused_pane) {
+                         const std::string& disassembly_memory_reference, eFocusPane focused_pane, const std::vector<SWatchExpression>& watch_expressions,
+                         const std::string& manual_memory_target) {
         const auto locals        = debug_session.getLocals(debug_selection);
-        const auto watch_results = debug_session.evaluateWatches(debug_selection,
-                                                                 {
-                                                                     {.expression = "sample_value"},
-                                                                     {.expression = "sample_bytes"},
-                                                                 });
+        const auto watch_results = debug_session.evaluateWatches(debug_selection, watch_expressions);
         locals_pane.rows         = formatLocalsPaneRows(locals);
         watch_list_pane.rows     = formatWatchListPaneRows(watch_results);
 
-        if (focused_pane == eFocusPane::WATCH_LIST && !watch_results.empty()) {
+        if (!manual_memory_target.empty()) {
+            if (const auto direct_address = findFirstHexAddress(manual_memory_target); direct_address.has_value()) {
+                const auto memory_read_result = debug_session.readMemory(debug_selection,
+                                                                         {
+                                                                             .start_address    = direct_address.value(),
+                                                                             .memory_reference = "",
+                                                                             .byte_count       = 40,
+                                                                             .bytes_per_row    = 8,
+                                                                         });
+                memory_view_pane.rows         = generateMemoryViewRows(memory_read_result);
+            } else {
+                const std::vector<SWatchResult> memory_target_results = debug_session.evaluateWatches(debug_selection, {{.expression = manual_memory_target}});
+                const auto                      memory_read_request   = buildMemoryReadRequest(memory_target_results, 0, disassembly_start_address, disassembly_memory_reference);
+                const auto                      memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
+                const auto                      synthetic_memory_rows = buildSyntheticMemoryRows(memory_target_results, 0, memory_read_request.bytes_per_row);
+                const bool                      target_has_explicit_memory_reference = !memory_target_results.empty() && !memory_target_results.front().memory_reference.empty() &&
+                    findFirstHexAddress(memory_target_results.front().memory_reference).has_value();
+
+                if (synthetic_memory_rows.has_value() && !target_has_explicit_memory_reference) {
+                    memory_view_pane.rows = synthetic_memory_rows.value();
+                } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
+                    memory_view_pane.rows = synthetic_memory_rows.value();
+                } else {
+                    memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
+                }
+            }
+        } else if (focused_pane == eFocusPane::WATCH_LIST && !watch_results.empty()) {
             const auto memory_read_request   = buildMemoryReadRequest(watch_results, watch_list_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
             const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
             const auto synthetic_memory_rows = buildSyntheticMemoryRows(watch_results, watch_list_pane.selected_index, memory_read_request.bytes_per_row);
@@ -351,9 +411,15 @@ int main() {
                         .show_memory_view      = app_config.show_memory_view,
                         .show_disassembly_view = app_config.show_disassembly_view,
     };
-    eFocusPane           focused_pane   = normalizeFocusedPane(app_config.startup_focus, view_visibility);
-    const auto           keybindings    = app_config.keybindings;
-    bool                 leader_pending = false;
+    eFocusPane                    focused_pane      = normalizeFocusedPane(app_config.startup_focus, view_visibility);
+    const auto                    keybindings       = app_config.keybindings;
+    bool                          leader_pending    = false;
+    std::vector<SWatchExpression> watch_expressions = {
+        {.expression = "sample_value"},
+        {.expression = "sample_bytes"},
+    };
+    std::string          manual_memory_target = {};
+    SPromptState         prompt_state         = {};
 
     SSelectablePaneState locals_pane = {
         .title = " Locals ",
@@ -373,7 +439,7 @@ int main() {
     };
 
     refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
-                    focused_pane);
+                    focused_pane, watch_expressions, manual_memory_target);
 
     auto renderer = Renderer([&] {
         Element  locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS);
@@ -418,10 +484,55 @@ int main() {
             });
         }
 
+        if (prompt_state.mode != ePromptMode::NONE) {
+            content = dbox({
+                content,
+                renderPromptOverlay(prompt_state) | center,
+            });
+        }
+
         return content;
     });
 
     auto component = CatchEvent(renderer, [&](Event event) {
+        if (prompt_state.mode != ePromptMode::NONE) {
+            if (event == Event::Escape) {
+                prompt_state = {};
+                return true;
+            }
+
+            if (event == Event::Return) {
+                if (prompt_state.mode == ePromptMode::ADD_WATCH) {
+                    if (!prompt_state.input.empty()) {
+                        watch_expressions.push_back({.expression = prompt_state.input});
+                        focused_pane = eFocusPane::WATCH_LIST;
+                    }
+                } else if (prompt_state.mode == ePromptMode::MEMORY_TARGET) {
+                    manual_memory_target = prompt_state.input;
+                    focused_pane         = eFocusPane::MEMORY_VIEW;
+                }
+
+                prompt_state = {};
+                refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
+                return true;
+            }
+
+            if (event == Event::Backspace) {
+                if (!prompt_state.input.empty()) {
+                    prompt_state.input.pop_back();
+                }
+                return true;
+            }
+
+            if (event.is_character()) {
+                prompt_state.input += event.character();
+                return true;
+            }
+
+            return true;
+        }
+
         if (event == Event::Character('q')) {
             screen.Exit();
             return true;
@@ -429,7 +540,7 @@ int main() {
 
         if (event == Event::Character('r')) {
             refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                            disassembly_memory_reference, focused_pane);
+                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             return true;
         }
 
@@ -449,7 +560,23 @@ int main() {
             if (event.is_character()) {
                 const auto command = findCommandForKeys(keybindings, "Space " + event.character());
                 if (command.has_value()) {
+                    if (command.value() == eCommand::ADD_WATCH) {
+                        prompt_state = {
+                            .mode  = ePromptMode::ADD_WATCH,
+                            .input = "",
+                        };
+                        return true;
+                    }
+                    if (command.value() == eCommand::SET_MEMORY_TARGET) {
+                        prompt_state = {
+                            .mode  = ePromptMode::MEMORY_TARGET,
+                            .input = manual_memory_target,
+                        };
+                        return true;
+                    }
                     executeCommand(command.value(), focused_pane, view_visibility);
+                    refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                    disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
                     return true;
                 }
             }
@@ -465,7 +592,7 @@ int main() {
         if (event == Event::Tab) {
             focused_pane = advanceFocusPane(focused_pane, view_visibility);
             refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                            disassembly_memory_reference, focused_pane);
+                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             return true;
         }
 
@@ -473,7 +600,7 @@ int main() {
             const bool handled = handleVerticalNavigation(event, locals_pane);
             if (handled) {
                 refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane);
+                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             }
             return handled;
         }
@@ -481,7 +608,7 @@ int main() {
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
                 refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane);
+                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             }
             return handled;
         }
