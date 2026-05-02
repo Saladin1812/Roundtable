@@ -32,6 +32,7 @@ struct SWatchResult {
     std::string expression;
     std::string value;
     std::string type;
+    std::string memory_reference;
     std::string error_message;
 };
 

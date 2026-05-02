@@ -5,7 +5,76 @@
 #include <vector>
 
 #include "debug_session.hpp"
+#include "memory_selection.hpp"
 #include "memory_view.hpp"
+
+namespace {
+
+    class CArrayAddressTestSession : public IDebugSession {
+      public:
+        SDebugCapabilities getCapabilities() override {
+            return {};
+        }
+
+        std::vector<SLocalVariable> getLocals(const SDebugSelection& selection) override {
+            static_cast<void>(selection);
+            return {};
+        }
+
+        SMemoryReadResult readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) override {
+            static_cast<void>(selection);
+            static_cast<void>(request);
+            return {};
+        }
+
+        std::vector<SWatchResult> evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) override {
+            static_cast<void>(selection);
+
+            std::vector<SWatchResult> results;
+            for (const auto& watch_expression : watch_expressions) {
+                if (watch_expression.expression == "&sample_bytes[0]") {
+                    results.push_back({
+                        .expression       = watch_expression.expression,
+                        .value            = "0x7000",
+                        .type             = "unsigned char*",
+                        .memory_reference = "0x7000",
+                        .error_message    = "",
+                    });
+                    continue;
+                }
+
+                if (watch_expression.expression == "sample_bytes.data()") {
+                    results.push_back({
+                        .expression       = watch_expression.expression,
+                        .value            = "pointer pretty value",
+                        .type             = "unsigned char*",
+                        .memory_reference = "0x7000",
+                        .error_message    = "",
+                    });
+                    continue;
+                }
+
+                results.push_back({
+                    .expression       = watch_expression.expression,
+                    .value            = "",
+                    .type             = "",
+                    .memory_reference = "",
+                    .error_message    = "missing",
+                });
+            }
+
+            return results;
+        }
+
+        std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) override {
+            static_cast<void>(selection);
+            static_cast<void>(start_address);
+            static_cast<void>(instruction_count);
+            return {};
+        }
+    };
+
+} // namespace
 
 TEST_CASE("generateMemoryViewRows formats bytes into memory rows") {
     const std::vector<std::uint8_t> memory_bytes = {
@@ -49,9 +118,10 @@ TEST_CASE("mock memory provider returns requested byte count") {
 
     const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
                                                                           {
-                                                                              .start_address = 0x4000,
-                                                                              .byte_count    = 16,
-                                                                              .bytes_per_row = 8,
+                                                                              .start_address    = 0x4000,
+                                                                              .memory_reference = "",
+                                                                              .byte_count       = 16,
+                                                                              .bytes_per_row    = 8,
                                                                           });
 
     CHECK(memory_read_result.start_address == 0x4000);
@@ -66,9 +136,10 @@ TEST_CASE("mock memory provider clamps requested byte count to available bytes")
 
     const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
                                                                           {
-                                                                              .start_address = 0x5000,
-                                                                              .byte_count    = 64,
-                                                                              .bytes_per_row = 8,
+                                                                              .start_address    = 0x5000,
+                                                                              .memory_reference = "",
+                                                                              .byte_count       = 64,
+                                                                              .bytes_per_row    = 8,
                                                                           });
 
     CHECK(memory_read_result.memory_bytes.size() == 40);
@@ -86,4 +157,49 @@ TEST_CASE("generateMemoryViewRows returns provider error as a row") {
 
     REQUIRE(rows.size() == 1);
     CHECK(rows[0] == "Failed to read memory");
+}
+
+TEST_CASE("findFirstHexAddress extracts the first hexadecimal address from text") {
+    const auto address = findFirstHexAddress("volatile std::array* = 0x7FFFABCD1234");
+
+    REQUIRE(address.has_value());
+    CHECK(address.value() == 0x7FFFABCD1234ULL);
+}
+
+TEST_CASE("buildMemoryReadRequest uses evaluated address for a selected non-pointer local") {
+    CMockDebugSession                 debug_session   = {};
+    const SDebugSelection             debug_selection = {};
+    const std::vector<SLocalVariable> locals          = debug_session.getLocals(debug_selection);
+
+    const SMemoryReadRequest          memory_read_request = buildMemoryReadRequest(debug_session, debug_selection, locals, 0, 0x1000);
+
+    CHECK(memory_read_request.start_address == 0x2000);
+    CHECK(memory_read_request.byte_count == 40);
+    CHECK(memory_read_request.bytes_per_row == 8);
+}
+
+TEST_CASE("buildMemoryReadRequest uses pointer local value when available") {
+    CMockDebugSession                 debug_session   = {};
+    const SDebugSelection             debug_selection = {};
+    const std::vector<SLocalVariable> locals          = debug_session.getLocals(debug_selection);
+
+    const SMemoryReadRequest          memory_read_request = buildMemoryReadRequest(debug_session, debug_selection, locals, 1, 0x2000);
+
+    CHECK(memory_read_request.start_address == 0x1000);
+}
+
+TEST_CASE("buildMemoryReadRequest uses array element address when available") {
+    CArrayAddressTestSession          debug_session   = {};
+    const SDebugSelection             debug_selection = {};
+    const std::vector<SLocalVariable> locals          = {
+        {
+                     .name  = "sample_bytes",
+                     .value = "{...}",
+                     .type  = "volatile std::array<unsigned char, 8>",
+        },
+    };
+
+    const SMemoryReadRequest memory_read_request = buildMemoryReadRequest(debug_session, debug_selection, locals, 0, 0x1000);
+
+    CHECK(memory_read_request.start_address == 0x7000);
 }

@@ -4,6 +4,8 @@
 #include <string_view>
 
 #include "dap_session.hpp"
+#include "memory_selection.hpp"
+#include "memory_view.hpp"
 
 int main(int argc, char** argv) {
     if (argc < 5) {
@@ -145,6 +147,43 @@ int main(int argc, char** argv) {
             for (const auto& watch_result : watch_results) {
                 std::cout << "watch expression=" << watch_result.expression << " value=" << watch_result.value << " type=" << watch_result.type
                           << " error=" << watch_result.error_message << '\n';
+            }
+
+            std::cerr << "probe: readMemory\n";
+            const auto address_watch_results = dap_session.evaluateWatches(
+                {
+                    .thread_id   = threads_response.threads.front().id,
+                    .frame_index = selected_frame_index,
+                },
+                {
+                    {.expression = "sample_bytes.data()"},
+                    {.expression = "&sample_bytes._M_elems[0]"},
+                    {.expression = "&sample_bytes[0]"},
+                    {.expression = "&sample_bytes"},
+                });
+            for (const auto& address_watch_result : address_watch_results) {
+                std::cout << "address watch expression=" << address_watch_result.expression << " value=" << address_watch_result.value << " type=" << address_watch_result.type
+                          << " memory_reference=" << address_watch_result.memory_reference << " error=" << address_watch_result.error_message << '\n';
+            }
+            const auto memory_read_request = buildMemoryReadRequest(dap_session,
+                                                                    {
+                                                                        .thread_id   = threads_response.threads.front().id,
+                                                                        .frame_index = selected_frame_index,
+                                                                    },
+                                                                    locals, 0, 0x1000);
+            const auto memory_read_result  = dap_session.readMemory(
+                {
+                     .thread_id   = threads_response.threads.front().id,
+                     .frame_index = selected_frame_index,
+                },
+                memory_read_request);
+
+            std::cout << "memory address=0x" << std::hex << std::uppercase << memory_read_request.start_address << std::dec << '\n';
+            std::cout << "memory error=" << memory_read_result.error_message << '\n';
+            const auto memory_rows = generateMemoryViewRows(memory_read_result);
+            std::cout << "memory row count=" << memory_rows.size() << '\n';
+            for (const auto& row : memory_rows) {
+                std::cout << "memory row=" << row << '\n';
             }
         }
 

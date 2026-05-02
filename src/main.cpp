@@ -12,6 +12,7 @@
 #include "app_config.hpp"
 #include "dap_session.hpp"
 #include "debug_session.hpp"
+#include "memory_selection.hpp"
 #include "memory_view.hpp"
 #include "pane_rows.hpp"
 #include "pane_state.hpp"
@@ -22,6 +23,7 @@ namespace {
         std::unique_ptr<IDebugSession> session;
         SDebugSelection                selection;
         std::uint64_t                  disassembly_start_address = 0x401000;
+        std::string                    disassembly_memory_reference;
         std::string                    status_message;
     };
 
@@ -128,10 +130,11 @@ namespace {
     SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
         if (app_config.session_mode != eSessionMode::DAP_LAUNCH) {
             return {
-                .session                   = std::make_unique<CMockDebugSession>(),
-                .selection                 = {},
-                .disassembly_start_address = 0x401000,
-                .status_message            = "Mock session",
+                .session                      = std::make_unique<CMockDebugSession>(),
+                .selection                    = {},
+                .disassembly_start_address    = 0x401000,
+                .disassembly_memory_reference = "",
+                .status_message               = "Mock session",
             };
         }
 
@@ -145,28 +148,31 @@ namespace {
 
         if (app_config.dap_launch.command.empty() || app_config.dap_launch.liblldb_path.empty() || app_config.dap_launch.program.empty()) {
             return {
-                .session                   = std::move(dap_session),
-                .selection                 = {},
-                .disassembly_start_address = 0x401000,
-                .status_message            = "DAP launch config is incomplete",
+                .session                      = std::move(dap_session),
+                .selection                    = {},
+                .disassembly_start_address    = 0x401000,
+                .disassembly_memory_reference = "",
+                .status_message               = "DAP launch config is incomplete",
             };
         }
 
         if (!dap_session->connect()) {
             return {
-                .session                   = std::move(dap_session),
-                .selection                 = {},
-                .disassembly_start_address = 0x401000,
-                .status_message            = "DAP connect failed: " + dap_session->getLastError(),
+                .session                      = std::move(dap_session),
+                .selection                    = {},
+                .disassembly_start_address    = 0x401000,
+                .disassembly_memory_reference = "",
+                .status_message               = "DAP connect failed: " + dap_session->getLastError(),
             };
         }
 
         if (!dap_session->initialize()) {
             return {
-                .session                   = std::move(dap_session),
-                .selection                 = {},
-                .disassembly_start_address = 0x401000,
-                .status_message            = "DAP initialize failed: " + dap_session->getLastError(),
+                .session                      = std::move(dap_session),
+                .selection                    = {},
+                .disassembly_start_address    = 0x401000,
+                .disassembly_memory_reference = "",
+                .status_message               = "DAP initialize failed: " + dap_session->getLastError(),
             };
         }
 
@@ -177,28 +183,31 @@ namespace {
                 .stop_on_entry     = app_config.dap_launch.stop_on_entry,
             })) {
             return {
-                .session                   = std::move(dap_session),
-                .selection                 = {},
-                .disassembly_start_address = 0x401000,
-                .status_message            = "DAP launch failed: " + dap_session->getLastError(),
+                .session                      = std::move(dap_session),
+                .selection                    = {},
+                .disassembly_start_address    = 0x401000,
+                .disassembly_memory_reference = "",
+                .status_message               = "DAP launch failed: " + dap_session->getLastError(),
             };
         }
 
         if (!dap_session->configurationDone()) {
             return {
-                .session                   = std::move(dap_session),
-                .selection                 = {},
-                .disassembly_start_address = 0x401000,
-                .status_message            = "DAP configurationDone failed: " + dap_session->getLastError(),
+                .session                      = std::move(dap_session),
+                .selection                    = {},
+                .disassembly_start_address    = 0x401000,
+                .disassembly_memory_reference = "",
+                .status_message               = "DAP configurationDone failed: " + dap_session->getLastError(),
             };
         }
 
         if (!dap_session->waitForStoppedEvent()) {
             return {
-                .session                   = std::move(dap_session),
-                .selection                 = {},
-                .disassembly_start_address = 0x401000,
-                .status_message            = "DAP waitForStoppedEvent failed: " + dap_session->getLastError(),
+                .session                      = std::move(dap_session),
+                .selection                    = {},
+                .disassembly_start_address    = 0x401000,
+                .disassembly_memory_reference = "",
+                .status_message               = "DAP waitForStoppedEvent failed: " + dap_session->getLastError(),
             };
         }
 
@@ -215,19 +224,21 @@ namespace {
 
             if (!continue_response.success) {
                 return {
-                    .session                   = std::move(dap_session),
-                    .selection                 = selection,
-                    .disassembly_start_address = 0x401000,
-                    .status_message            = "DAP continue failed: " + continue_response.error_message,
+                    .session                      = std::move(dap_session),
+                    .selection                    = selection,
+                    .disassembly_start_address    = 0x401000,
+                    .disassembly_memory_reference = "",
+                    .status_message               = "DAP continue failed: " + continue_response.error_message,
                 };
             }
 
             if (!dap_session->waitForStoppedEvent()) {
                 return {
-                    .session                   = std::move(dap_session),
-                    .selection                 = selection,
-                    .disassembly_start_address = 0x401000,
-                    .status_message            = "DAP wait after continue failed: " + dap_session->getLastError(),
+                    .session                      = std::move(dap_session),
+                    .selection                    = selection,
+                    .disassembly_start_address    = 0x401000,
+                    .disassembly_memory_reference = "",
+                    .status_message               = "DAP wait after continue failed: " + dap_session->getLastError(),
                 };
             }
 
@@ -238,6 +249,7 @@ namespace {
         }
 
         std::uint64_t disassembly_start_address = 0x401000;
+        std::string   disassembly_memory_reference;
         if (selection.thread_id != 0) {
             const auto stack_trace = dap_session->getStackTrace({
                 .thread_id   = static_cast<int>(selection.thread_id),
@@ -252,6 +264,7 @@ namespace {
                 selection.frame_index = static_cast<std::size_t>(std::distance(stack_trace.stack_frames.begin(), selected_frame_iterator));
 
                 if (!selected_frame_iterator->instruction_pointer_reference.empty()) {
+                    disassembly_memory_reference = selected_frame_iterator->instruction_pointer_reference;
                     try {
                         disassembly_start_address = std::stoull(selected_frame_iterator->instruction_pointer_reference, nullptr, 0);
                     } catch (const std::exception&) { disassembly_start_address = 0x401000; }
@@ -260,22 +273,21 @@ namespace {
         }
 
         return {
-            .session                   = std::move(dap_session),
-            .selection                 = selection,
-            .disassembly_start_address = disassembly_start_address,
-            .status_message            = selection.thread_id != 0 ? "DAP launch session" : "DAP launch session without active thread",
+            .session                      = std::move(dap_session),
+            .selection                    = selection,
+            .disassembly_start_address    = disassembly_start_address,
+            .disassembly_memory_reference = disassembly_memory_reference,
+            .status_message               = selection.thread_id != 0 ? "DAP launch session" : "DAP launch session without active thread",
         };
     }
 
     void refreshPaneRows(IDebugSession& debug_session, const SDebugSelection& debug_selection, SSelectablePaneState& locals_pane, SSelectablePaneState& memory_view_pane,
-                         SSelectablePaneState& disassembly_pane, SSelectablePaneState& watch_list_pane, std::uint64_t disassembly_start_address) {
-        locals_pane.rows      = formatLocalsPaneRows(debug_session.getLocals(debug_selection));
-        memory_view_pane.rows = generateMemoryViewRows(debug_session.readMemory(debug_selection,
-                                                                                {
-                                                                                    .start_address = 0x1000,
-                                                                                    .byte_count    = 40,
-                                                                                    .bytes_per_row = 8,
-                                                                                }));
+                         SSelectablePaneState& disassembly_pane, SSelectablePaneState& watch_list_pane, std::uint64_t disassembly_start_address,
+                         const std::string& disassembly_memory_reference) {
+        const auto locals     = debug_session.getLocals(debug_selection);
+        locals_pane.rows      = formatLocalsPaneRows(locals);
+        memory_view_pane.rows = generateMemoryViewRows(debug_session.readMemory(
+            debug_selection, buildMemoryReadRequest(debug_session, debug_selection, locals, locals_pane.selected_index, disassembly_start_address, disassembly_memory_reference)));
         disassembly_pane.rows = formatDisassemblyPaneRows(debug_session.disassemble(debug_selection, disassembly_start_address, 8));
         watch_list_pane.rows  = formatWatchListPaneRows(debug_session.evaluateWatches(debug_selection,
                                                                                       {
@@ -294,16 +306,17 @@ namespace {
 int main() {
     using namespace ftxui;
 
-    const SAppConfig        app_config                = loadAppConfig("roundtable.toml");
-    SSessionBootstrapResult bootstrap_result          = bootstrapSession(app_config);
-    auto&                   debug_session             = *bootstrap_result.session;
-    SDebugSelection         debug_selection           = bootstrap_result.selection;
-    std::uint64_t           disassembly_start_address = bootstrap_result.disassembly_start_address;
-    std::string             session_status            = bootstrap_result.status_message;
-    auto                    screen                    = ScreenInteractive::Fullscreen();
-    SViewVisibilityState    view_visibility           = {
-                     .show_memory_view      = app_config.show_memory_view,
-                     .show_disassembly_view = app_config.show_disassembly_view,
+    const SAppConfig        app_config                   = loadAppConfig("roundtable.toml");
+    SSessionBootstrapResult bootstrap_result             = bootstrapSession(app_config);
+    auto&                   debug_session                = *bootstrap_result.session;
+    SDebugSelection         debug_selection              = bootstrap_result.selection;
+    std::uint64_t           disassembly_start_address    = bootstrap_result.disassembly_start_address;
+    std::string             disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
+    std::string             session_status               = bootstrap_result.status_message;
+    auto                    screen                       = ScreenInteractive::Fullscreen();
+    SViewVisibilityState    view_visibility              = {
+                        .show_memory_view      = app_config.show_memory_view,
+                        .show_disassembly_view = app_config.show_disassembly_view,
     };
     eFocusPane           focused_pane   = normalizeFocusedPane(app_config.startup_focus, view_visibility);
     const auto           keybindings    = app_config.keybindings;
@@ -326,7 +339,7 @@ int main() {
         .rows  = {},
     };
 
-    refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address);
+    refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference);
 
     auto renderer = Renderer([&] {
         Element  locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS);
@@ -381,7 +394,8 @@ int main() {
         }
 
         if (event == Event::Character('r')) {
-            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address);
+            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                            disassembly_memory_reference);
             return true;
         }
 
@@ -420,7 +434,12 @@ int main() {
         }
 
         if (focused_pane == eFocusPane::LOCALS) {
-            return handleVerticalNavigation(event, locals_pane);
+            const bool handled = handleVerticalNavigation(event, locals_pane);
+            if (handled) {
+                refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                                disassembly_memory_reference);
+            }
+            return handled;
         }
         if (focused_pane == eFocusPane::WATCH_LIST) {
             return handleVerticalNavigation(event, watch_list_pane);

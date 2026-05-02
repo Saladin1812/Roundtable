@@ -7,6 +7,7 @@
 
 struct SMemoryReadRequest {
     std::uint64_t start_address = 0;
+    std::string   memory_reference;
     std::size_t   byte_count    = 0;
     std::size_t   bytes_per_row = 8;
 };

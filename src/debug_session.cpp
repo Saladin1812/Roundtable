@@ -57,29 +57,54 @@ std::vector<SWatchResult> CMockDebugSession::evaluateWatches(const SDebugSelecti
     for (const auto& watch_expression : watch_expressions) {
         if (watch_expression.expression == "a") {
             watch_results.push_back({
-                .expression    = watch_expression.expression,
-                .value         = "42",
-                .type          = "int",
-                .error_message = "",
+                .expression       = watch_expression.expression,
+                .value            = "42",
+                .type             = "int",
+                .memory_reference = "",
+                .error_message    = "",
+            });
+            continue;
+        }
+
+        if (watch_expression.expression == "&a") {
+            watch_results.push_back({
+                .expression       = watch_expression.expression,
+                .value            = "0x2000",
+                .type             = "int*",
+                .memory_reference = "0x2000",
+                .error_message    = "",
             });
             continue;
         }
 
         if (watch_expression.expression == "ptr") {
             watch_results.push_back({
-                .expression    = watch_expression.expression,
-                .value         = "0x1000",
-                .type          = "char*",
-                .error_message = "",
+                .expression       = watch_expression.expression,
+                .value            = "0x1000",
+                .type             = "char*",
+                .memory_reference = "0x1000",
+                .error_message    = "",
+            });
+            continue;
+        }
+
+        if (watch_expression.expression == "&ptr") {
+            watch_results.push_back({
+                .expression       = watch_expression.expression,
+                .value            = "0x3000",
+                .type             = "char**",
+                .memory_reference = "0x3000",
+                .error_message    = "",
             });
             continue;
         }
 
         watch_results.push_back({
-            .expression    = watch_expression.expression,
-            .value         = "",
-            .type          = "",
-            .error_message = "Expression could not be evaluated",
+            .expression       = watch_expression.expression,
+            .value            = "",
+            .type             = "",
+            .memory_reference = "",
+            .error_message    = "Expression could not be evaluated",
         });
     }
 

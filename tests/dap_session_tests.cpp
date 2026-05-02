@@ -159,9 +159,10 @@ TEST_CASE("CDapDebugSession returns a clean disconnected error for memory reads"
 
     const SMemoryReadResult memory_read_result = dap_session.readMemory({},
                                                                         {
-                                                                            .start_address = 0x1000,
-                                                                            .byte_count    = 16,
-                                                                            .bytes_per_row = 8,
+                                                                            .start_address    = 0x1000,
+                                                                            .memory_reference = "",
+                                                                            .byte_count       = 16,
+                                                                            .bytes_per_row    = 8,
                                                                         });
 
     CHECK(memory_read_result.start_address == 0x1000);

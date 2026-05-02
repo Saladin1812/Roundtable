@@ -135,6 +135,7 @@ struct SDapEvaluateResponse {
     bool        success = false;
     std::string result;
     std::string type;
+    std::string memory_reference;
     std::string error_message;
 };
 

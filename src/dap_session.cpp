@@ -881,6 +881,11 @@ SDapEvaluateResponse CDapDebugSession::parseEvaluateResponseMessage(const std::s
         response.type = type.value();
     }
 
+    const auto memory_reference = extractJsonStringField(body_message, "memoryReference");
+    if (memory_reference.has_value()) {
+        response.memory_reference = memory_reference.value();
+    }
+
     return response;
 }
 
@@ -1388,19 +1393,21 @@ SDapContinueResponse CDapDebugSession::continueExecution(const SDapContinueReque
 SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evaluate_request) {
     if (!isConnected()) {
         return {
-            .success       = false,
-            .result        = "",
-            .type          = "",
-            .error_message = "DAP session is not connected",
+            .success          = false,
+            .result           = "",
+            .type             = "",
+            .memory_reference = "",
+            .error_message    = "DAP session is not connected",
         };
     }
 
     if (!adapter_capabilities_.supports_evaluate) {
         return {
-            .success       = false,
-            .result        = "",
-            .type          = "",
-            .error_message = "DAP adapter does not support evaluate",
+            .success          = false,
+            .result           = "",
+            .type             = "",
+            .memory_reference = "",
+            .error_message    = "DAP adapter does not support evaluate",
         };
     }
 
@@ -1409,10 +1416,11 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
 
     if (!transport_->sendMessage(request_message, error_message)) {
         return {
-            .success       = false,
-            .result        = "",
-            .type          = "",
-            .error_message = error_message,
+            .success          = false,
+            .result           = "",
+            .type             = "",
+            .memory_reference = "",
+            .error_message    = error_message,
         };
     }
 
@@ -1420,10 +1428,11 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
         std::string response_message;
         if (!transport_->readMessage(response_message, error_message)) {
             return {
-                .success       = false,
-                .result        = "",
-                .type          = "",
-                .error_message = error_message,
+                .success          = false,
+                .result           = "",
+                .type             = "",
+                .memory_reference = "",
+                .error_message    = error_message,
             };
         }
 
@@ -1580,12 +1589,13 @@ SMemoryReadResult CDapDebugSession::readMemory(const SDebugSelection& selection,
     }
 
     std::string error_message;
-    const auto  request_message = buildReadMemoryRequestMessage(next_sequence_number_++,
-                                                                {
-                                                                    .memory_reference = formatMemoryReference(request.start_address),
-                                                                    .offset           = 0,
-                                                                    .count            = request.byte_count,
-                                                               });
+    const auto  request_message =
+        buildReadMemoryRequestMessage(next_sequence_number_++,
+                                      {
+                                          .memory_reference = request.memory_reference.empty() ? formatMemoryReference(request.start_address) : request.memory_reference,
+                                          .offset           = 0,
+                                          .count            = request.byte_count,
+                                      });
 
     if (!transport_->sendMessage(request_message, error_message)) {
         last_error_ = error_message;
@@ -1646,10 +1656,11 @@ std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelectio
     if (!isConnected()) {
         for (const auto& watch_expression : watch_expressions) {
             watch_results.push_back({
-                .expression    = watch_expression.expression,
-                .value         = "",
-                .type          = "",
-                .error_message = "DAP session is not connected",
+                .expression       = watch_expression.expression,
+                .value            = "",
+                .type             = "",
+                .memory_reference = "",
+                .error_message    = "DAP session is not connected",
             });
         }
 
@@ -1659,10 +1670,11 @@ std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelectio
     if (!adapter_capabilities_.supports_evaluate) {
         for (const auto& watch_expression : watch_expressions) {
             watch_results.push_back({
-                .expression    = watch_expression.expression,
-                .value         = "",
-                .type          = "",
-                .error_message = "DAP adapter does not support evaluate",
+                .expression       = watch_expression.expression,
+                .value            = "",
+                .type             = "",
+                .memory_reference = "",
+                .error_message    = "DAP adapter does not support evaluate",
             });
         }
 
@@ -1678,10 +1690,11 @@ std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelectio
     if (!stack_trace_response.success || stack_trace_response.stack_frames.size() <= selection.frame_index) {
         for (const auto& watch_expression : watch_expressions) {
             watch_results.push_back({
-                .expression    = watch_expression.expression,
-                .value         = "",
-                .type          = "",
-                .error_message = stack_trace_response.success ? "DAP stackTrace did not include requested frame" : stack_trace_response.error_message,
+                .expression       = watch_expression.expression,
+                .value            = "",
+                .type             = "",
+                .memory_reference = "",
+                .error_message    = stack_trace_response.success ? "DAP stackTrace did not include requested frame" : stack_trace_response.error_message,
             });
         }
 
@@ -1698,10 +1711,11 @@ std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelectio
         });
 
         watch_results.push_back({
-            .expression    = watch_expression.expression,
-            .value         = evaluate_response.result,
-            .type          = evaluate_response.type,
-            .error_message = evaluate_response.success ? "" : evaluate_response.error_message,
+            .expression       = watch_expression.expression,
+            .value            = evaluate_response.result,
+            .type             = evaluate_response.type,
+            .memory_reference = evaluate_response.memory_reference,
+            .error_message    = evaluate_response.success ? "" : evaluate_response.error_message,
         });
     }
 

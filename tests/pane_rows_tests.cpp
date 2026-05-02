@@ -26,16 +26,18 @@ TEST_CASE("formatLocalsPaneRows formats local variables for the locals pane") {
 TEST_CASE("formatWatchListPaneRows formats watch results and errors") {
     const std::vector<SWatchResult> watch_results = {
         {
-            .expression    = "a",
-            .value         = "42",
-            .type          = "int",
-            .error_message = "",
+            .expression       = "a",
+            .value            = "42",
+            .type             = "int",
+            .memory_reference = "",
+            .error_message    = "",
         },
         {
-            .expression    = "missing_value",
-            .value         = "",
-            .type          = "",
-            .error_message = "Expression could not be evaluated",
+            .expression       = "missing_value",
+            .value            = "",
+            .type             = "",
+            .memory_reference = "",
+            .error_message    = "Expression could not be evaluated",
         },
     };
 

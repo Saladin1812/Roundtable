@@ -61,6 +61,7 @@ add_executable(roundtable_dap_probe
   src/app_config.cpp
   src/dap_session.cpp
   src/debug_session.cpp
+  src/memory_selection.cpp
   src/memory_view.cpp
   src/pane_rows.cpp
   src/pane_state.cpp
@@ -118,6 +119,7 @@ if(BUILD_TESTING)
     src/app_config.cpp
     src/dap_session.cpp
     src/debug_session.cpp
+    src/memory_selection.cpp
     src/memory_view.cpp
     src/pane_rows.cpp
     src/pane_state.cpp
