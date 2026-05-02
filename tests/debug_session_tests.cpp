@@ -23,9 +23,10 @@ TEST_CASE("mock debug session reads memory for the current selection") {
 
     const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
                                                                           {
-                                                                              .start_address = 0x7000,
-                                                                              .byte_count    = 8,
-                                                                              .bytes_per_row = 8,
+                                                                              .start_address    = 0x7000,
+                                                                              .memory_reference = "",
+                                                                              .byte_count       = 8,
+                                                                              .bytes_per_row    = 8,
                                                                           });
 
     CHECK(memory_read_result.start_address == 0x7000);

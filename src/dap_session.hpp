@@ -107,6 +107,7 @@ struct SDapVariable {
     std::string name;
     std::string value;
     std::string type;
+    std::string memory_reference;
     int         variables_reference = 0;
 };
 

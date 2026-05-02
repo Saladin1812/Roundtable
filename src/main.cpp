@@ -284,10 +284,24 @@ namespace {
     void refreshPaneRows(IDebugSession& debug_session, const SDebugSelection& debug_selection, SSelectablePaneState& locals_pane, SSelectablePaneState& memory_view_pane,
                          SSelectablePaneState& disassembly_pane, SSelectablePaneState& watch_list_pane, std::uint64_t disassembly_start_address,
                          const std::string& disassembly_memory_reference) {
-        const auto locals     = debug_session.getLocals(debug_selection);
-        locals_pane.rows      = formatLocalsPaneRows(locals);
-        memory_view_pane.rows = generateMemoryViewRows(debug_session.readMemory(
-            debug_selection, buildMemoryReadRequest(debug_session, debug_selection, locals, locals_pane.selected_index, disassembly_start_address, disassembly_memory_reference)));
+        const auto locals = debug_session.getLocals(debug_selection);
+        locals_pane.rows  = formatLocalsPaneRows(locals);
+        const auto memory_read_request =
+            buildMemoryReadRequest(debug_session, debug_selection, locals, locals_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
+        const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
+        const auto synthetic_memory_rows = buildSyntheticMemoryRows(locals, locals_pane.selected_index, memory_read_request.bytes_per_row);
+        const auto selected_local_index  = locals.empty() ? 0UL : std::min(locals_pane.selected_index, locals.size() - 1);
+        const bool selected_local_has_explicit_memory_reference =
+            !locals.empty() && !locals[selected_local_index].memory_reference.empty() && findFirstHexAddress(locals[selected_local_index].memory_reference).has_value();
+
+        if (synthetic_memory_rows.has_value() && !selected_local_has_explicit_memory_reference) {
+            memory_view_pane.rows = synthetic_memory_rows.value();
+        } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
+            memory_view_pane.rows = synthetic_memory_rows.value();
+        } else {
+            memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
+        }
+
         disassembly_pane.rows = formatDisassemblyPaneRows(debug_session.disassemble(debug_selection, disassembly_start_address, 8));
         watch_list_pane.rows  = formatWatchListPaneRows(debug_session.evaluateWatches(debug_selection,
                                                                                       {

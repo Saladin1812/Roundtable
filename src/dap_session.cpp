@@ -475,6 +475,45 @@ std::string CDapDebugSession::buildDisassembleRequestMessage(int sequence_number
 
 namespace {
 
+    std::optional<std::string> parseJsonStringLiteral(const std::string& response_message, std::size_t value_start) {
+        std::string parsed_value;
+
+        for (std::size_t index = value_start; index < response_message.size(); ++index) {
+            const char current_character = response_message[index];
+
+            if (current_character == '\\') {
+                if (index + 1 >= response_message.size()) {
+                    return std::nullopt;
+                }
+
+                const char escaped_character = response_message[++index];
+                switch (escaped_character) {
+                    case '"':
+                    case '\\':
+                    case '/': parsed_value.push_back(escaped_character); break;
+                    case 'b': parsed_value.push_back('\b'); break;
+                    case 'f': parsed_value.push_back('\f'); break;
+                    case 'n': parsed_value.push_back('\n'); break;
+                    case 'r': parsed_value.push_back('\r'); break;
+                    case 't': parsed_value.push_back('\t'); break;
+                    default:
+                        parsed_value.push_back('\\');
+                        parsed_value.push_back(escaped_character);
+                        break;
+                }
+                continue;
+            }
+
+            if (current_character == '"') {
+                return parsed_value;
+            }
+
+            parsed_value.push_back(current_character);
+        }
+
+        return std::nullopt;
+    }
+
     std::optional<std::string> extractJsonStringField(const std::string& response_message, const std::string& field_name) {
         const auto field_pattern = "\"" + field_name + "\":\"";
         const auto field_start   = response_message.find(field_pattern);
@@ -483,12 +522,7 @@ namespace {
         }
 
         const auto value_start = field_start + field_pattern.size();
-        const auto value_end   = response_message.find('"', value_start);
-        if (value_end == std::string::npos) {
-            return std::nullopt;
-        }
-
-        return response_message.substr(value_start, value_end - value_start);
+        return parseJsonStringLiteral(response_message, value_start);
     }
 
     std::optional<int> extractJsonIntegerField(const std::string& response_message, const std::string& field_name) {
@@ -828,6 +862,11 @@ SDapVariablesResponse CDapDebugSession::parseVariablesResponseMessage(const std:
         const auto type = extractJsonStringField(variable_message, "type");
         if (type.has_value()) {
             variable.type = type.value();
+        }
+
+        const auto memory_reference = extractJsonStringField(variable_message, "memoryReference");
+        if (memory_reference.has_value()) {
+            variable.memory_reference = memory_reference.value();
         }
 
         const auto variables_reference = extractJsonIntegerField(variable_message, "variablesReference");
@@ -1557,10 +1596,43 @@ std::vector<SLocalVariable> CDapDebugSession::getLocals(const SDebugSelection& s
     std::vector<SLocalVariable> locals;
     locals.reserve(variables_response.variables.size());
     for (const auto& variable : variables_response.variables) {
+        std::string resolved_memory_reference = variable.memory_reference;
+
+        if (resolved_memory_reference.empty() && variable.variables_reference != 0) {
+            const auto child_variables_response = getVariables({
+                .variables_reference = variable.variables_reference,
+            });
+
+            if (child_variables_response.success) {
+                const auto memory_child_iterator = std::ranges::find_if(child_variables_response.variables, [](const SDapVariable& child_variable) {
+                    return child_variable.name == "_M_elems" || child_variable.name == "__data" || child_variable.name == "_Elems";
+                });
+
+                if (memory_child_iterator != child_variables_response.variables.end()) {
+                    if (!memory_child_iterator->memory_reference.empty()) {
+                        resolved_memory_reference = memory_child_iterator->memory_reference;
+                    } else if (memory_child_iterator->variables_reference != 0) {
+                        const auto element_variables_response = getVariables({
+                            .variables_reference = memory_child_iterator->variables_reference,
+                        });
+
+                        if (element_variables_response.success && !element_variables_response.variables.empty()) {
+                            const auto& first_element = element_variables_response.variables.front();
+                            if (!first_element.memory_reference.empty()) {
+                                resolved_memory_reference = first_element.memory_reference;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         locals.push_back({
-            .name  = variable.name,
-            .value = variable.value,
-            .type  = variable.type,
+            .name                = variable.name,
+            .value               = variable.value,
+            .type                = variable.type,
+            .memory_reference    = resolved_memory_reference,
+            .variables_reference = variable.variables_reference,
         });
     }
 

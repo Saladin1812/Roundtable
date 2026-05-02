@@ -32,6 +32,17 @@ namespace {
 
             std::vector<SWatchResult> results;
             for (const auto& watch_expression : watch_expressions) {
+                if (watch_expression.expression == "&sample_bytes._M_elems[0]") {
+                    results.push_back({
+                        .expression       = watch_expression.expression,
+                        .value            = "0x7000",
+                        .type             = "unsigned char*",
+                        .memory_reference = "0x7000",
+                        .error_message    = "",
+                    });
+                    continue;
+                }
+
                 if (watch_expression.expression == "&sample_bytes[0]") {
                     results.push_back({
                         .expression       = watch_expression.expression,
@@ -193,13 +204,47 @@ TEST_CASE("buildMemoryReadRequest uses array element address when available") {
     const SDebugSelection             debug_selection = {};
     const std::vector<SLocalVariable> locals          = {
         {
-                     .name  = "sample_bytes",
-                     .value = "{...}",
-                     .type  = "volatile std::array<unsigned char, 8>",
+                     .name                = "sample_bytes",
+                     .value               = "{...}",
+                     .type                = "volatile std::array<unsigned char, 8>",
+                     .memory_reference    = "0x7000",
+                     .variables_reference = 1019,
         },
     };
 
     const SMemoryReadRequest memory_read_request = buildMemoryReadRequest(debug_session, debug_selection, locals, 0, 0x1000);
 
     CHECK(memory_read_request.start_address == 0x7000);
+}
+
+TEST_CASE("buildSyntheticMemoryRows formats bytes from an array-like local value") {
+    const std::vector<SLocalVariable> locals = {
+        {
+            .name                = "sample_bytes",
+            .value               = R"({_M_elems:"Hello!\0A"})",
+            .type                = "volatile std::array<unsigned char, 8>",
+            .memory_reference    = "",
+            .variables_reference = 1019,
+        },
+    };
+
+    const auto rows = buildSyntheticMemoryRows(locals, 0);
+
+    REQUIRE(rows.has_value());
+    REQUIRE(rows->size() == 1);
+    CHECK(rows->at(0) == "<value>  48 65 6C 6C 6F 21 00 41  Hello!.A");
+}
+
+TEST_CASE("buildSyntheticMemoryRows returns no rows for non-array locals") {
+    const std::vector<SLocalVariable> locals = {
+        {
+            .name                = "sample_value",
+            .value               = "42",
+            .type                = "const int",
+            .memory_reference    = "",
+            .variables_reference = 0,
+        },
+    };
+
+    CHECK_FALSE(buildSyntheticMemoryRows(locals, 0).has_value());
 }

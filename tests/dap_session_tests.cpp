@@ -371,7 +371,7 @@ TEST_CASE("CDapDebugSession builds a variables request message") {
 
 TEST_CASE("CDapDebugSession parses a variables response message") {
     const std::string response_message =
-        R"({"success":true,"body":{"variables":[{"name":"value","value":"42","type":"int","variablesReference":0},{"name":"ptr","value":"0x1000","type":"char *","variablesReference":7}]}})";
+        R"({"success":true,"body":{"variables":[{"name":"value","value":"42","type":"int","variablesReference":0},{"name":"ptr","value":"0x1000","type":"char *","memoryReference":"0x1000","variablesReference":7}]}})";
 
     const SDapVariablesResponse response = CDapDebugSession::parseVariablesResponseMessage(response_message);
 
@@ -383,6 +383,7 @@ TEST_CASE("CDapDebugSession parses a variables response message") {
     CHECK(response.variables[1].name == "ptr");
     CHECK(response.variables[1].value == "0x1000");
     CHECK(response.variables[1].type == "char *");
+    CHECK(response.variables[1].memory_reference == "0x1000");
     CHECK(response.variables[1].variables_reference == 7);
 }
 
@@ -426,6 +427,15 @@ TEST_CASE("CDapDebugSession parses an evaluate response message") {
     CHECK(response.result == "42");
     CHECK(response.type == "const int");
     CHECK(response.error_message.empty());
+}
+
+TEST_CASE("CDapDebugSession parses escaped characters in evaluate response strings") {
+    const SDapEvaluateResponse response = CDapDebugSession::parseEvaluateResponseMessage(
+        R"({"success":true,"body":{"result":"{_M_elems:\"Hello!\\0A\"}","type":"volatile std::array<unsigned char, 8>","variablesReference":1019}})");
+
+    REQUIRE(response.success);
+    CHECK(response.result == "{_M_elems:\"Hello!\\0A\"}");
+    CHECK(response.type == "volatile std::array<unsigned char, 8>");
 }
 
 TEST_CASE("CDapDebugSession parses a failed evaluate response message") {
@@ -666,7 +676,7 @@ TEST_CASE("CDapDebugSession resolves locals through stackTrace scopes and variab
     transport->setReadMessages({
         R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":1001,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}}]}})",
         R"({"type":"response","command":"scopes","success":true,"body":{"scopes":[{"name":"Registers","variablesReference":11},{"name":"Locals","variablesReference":23}]}})",
-        R"({"type":"response","command":"variables","success":true,"body":{"variables":[{"name":"value","value":"42","type":"int","variablesReference":0},{"name":"ptr","value":"0x1000","type":"char *","variablesReference":0}]}})",
+        R"({"type":"response","command":"variables","success":true,"body":{"variables":[{"name":"value","value":"42","type":"int","variablesReference":0},{"name":"ptr","value":"0x1000","type":"char *","memoryReference":"0x1000","variablesReference":0}]}})",
     });
 
     CDapDebugSession dap_session(std::move(transport), {});
@@ -681,9 +691,38 @@ TEST_CASE("CDapDebugSession resolves locals through stackTrace scopes and variab
     CHECK(locals[0].name == "value");
     CHECK(locals[0].value == "42");
     CHECK(locals[0].type == "int");
+    CHECK(locals[0].memory_reference.empty());
+    CHECK(locals[0].variables_reference == 0);
     CHECK(locals[1].name == "ptr");
     CHECK(locals[1].value == "0x1000");
     CHECK(locals[1].type == "char *");
+    CHECK(locals[1].memory_reference == "0x1000");
+    CHECK(locals[1].variables_reference == 0);
+}
+
+TEST_CASE("CDapDebugSession resolves local memoryReference through child variables") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":1001,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}}]}})",
+        R"({"type":"response","command":"scopes","success":true,"body":{"scopes":[{"name":"Locals","variablesReference":23}]}})",
+        R"({"type":"response","command":"variables","success":true,"body":{"variables":[{"name":"sample_bytes","value":"{...}","type":"volatile std::array<unsigned char, 8>","variablesReference":1019}]}})",
+        R"({"type":"response","command":"variables","success":true,"body":{"variables":[{"name":"_M_elems","value":"{...}","type":"unsigned char [8]","variablesReference":1020}]}})",
+        R"({"type":"response","command":"variables","success":true,"body":{"variables":[{"name":"[0]","value":"'H'","type":"unsigned char","memoryReference":"0x7000","variablesReference":0}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto locals = dap_session.getLocals({
+        .thread_id   = 1,
+        .frame_index = 0,
+    });
+
+    REQUIRE(locals.size() == 1);
+    CHECK(locals[0].name == "sample_bytes");
+    CHECK(locals[0].type == "volatile std::array<unsigned char, 8>");
+    CHECK(locals[0].memory_reference == "0x7000");
+    CHECK(locals[0].variables_reference == 1019);
 }
 
 TEST_CASE("CDapDebugSession evaluates watch expressions through stackTrace and evaluate") {

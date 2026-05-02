@@ -5,14 +5,18 @@
 TEST_CASE("formatLocalsPaneRows formats local variables for the locals pane") {
     const std::vector<SLocalVariable> locals = {
         {
-            .name  = "a",
-            .value = "42",
-            .type  = "int",
+            .name                = "a",
+            .value               = "42",
+            .type                = "int",
+            .memory_reference    = "",
+            .variables_reference = 0,
         },
         {
-            .name  = "ptr",
-            .value = "0x1000",
-            .type  = "char*",
+            .name                = "ptr",
+            .value               = "0x1000",
+            .type                = "char*",
+            .memory_reference    = "0x1000",
+            .variables_reference = 0,
         },
     };
 
