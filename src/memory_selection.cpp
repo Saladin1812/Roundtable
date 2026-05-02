@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <iomanip>
 #include <sstream>
 
@@ -95,7 +96,11 @@ std::optional<std::uint64_t> findFirstHexAddress(const std::string& text) {
         }
 
         if (address_end > address_start + 2) {
-            return std::stoull(text.substr(address_start, address_end - address_start), nullptr, 0);
+            std::uint64_t parsed_address = 0;
+            const auto    parse_result   = std::from_chars(text.data() + address_start + 2, text.data() + address_end, parsed_address, 16);
+            if (parse_result.ec == std::errc{}) {
+                return parsed_address;
+            }
         }
 
         search_position = address_start + 2;
