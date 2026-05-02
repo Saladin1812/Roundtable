@@ -29,7 +29,25 @@ namespace {
     struct SPromptState {
         ePromptMode mode = ePromptMode::NONE;
         std::string input;
+        std::size_t cursor_index     = 0;
+        bool        replace_on_input = false;
     };
+
+    SPromptState beginPrompt(ePromptMode mode, std::string initial_input = "", bool replace_on_input = false) {
+        return {
+            .mode             = mode,
+            .input            = std::move(initial_input),
+            .cursor_index     = initial_input.size(),
+            .replace_on_input = replace_on_input,
+        };
+    }
+
+    std::string buildPromptDisplay(const SPromptState& prompt_state) {
+        std::string display_input = prompt_state.input;
+        const auto  cursor_index  = std::min(prompt_state.cursor_index, display_input.size());
+        display_input.insert(cursor_index, "|");
+        return "> " + display_input;
+    }
 
     struct SSessionBootstrapResult {
         std::unique_ptr<IDebugSession> session;
@@ -130,7 +148,7 @@ namespace {
                       vbox({
                           text(hint),
                           separator(),
-                          text("> " + prompt_state.input),
+                          text(buildPromptDisplay(prompt_state)),
                       })) |
             size(WIDTH, GREATER_THAN, 48);
     }
@@ -528,15 +546,47 @@ int main() {
                 return true;
             }
 
+            if (event == Event::ArrowLeft) {
+                if (prompt_state.replace_on_input) {
+                    prompt_state.cursor_index     = 0;
+                    prompt_state.replace_on_input = false;
+                } else if (prompt_state.cursor_index > 0) {
+                    --prompt_state.cursor_index;
+                }
+                return true;
+            }
+
+            if (event == Event::ArrowRight) {
+                if (prompt_state.replace_on_input) {
+                    prompt_state.cursor_index     = prompt_state.input.size();
+                    prompt_state.replace_on_input = false;
+                } else if (prompt_state.cursor_index < prompt_state.input.size()) {
+                    ++prompt_state.cursor_index;
+                }
+                return true;
+            }
+
             if (event == Event::Backspace) {
-                if (!prompt_state.input.empty()) {
-                    prompt_state.input.pop_back();
+                if (prompt_state.replace_on_input) {
+                    prompt_state.cursor_index     = 0;
+                    prompt_state.replace_on_input = false;
+                    prompt_state.input.clear();
+                } else if (prompt_state.cursor_index > 0 && !prompt_state.input.empty()) {
+                    prompt_state.input.erase(prompt_state.cursor_index - 1, 1);
+                    --prompt_state.cursor_index;
                 }
                 return true;
             }
 
             if (event.is_character()) {
-                prompt_state.input += event.character();
+                if (prompt_state.replace_on_input) {
+                    prompt_state.input            = event.character();
+                    prompt_state.cursor_index     = prompt_state.input.size();
+                    prompt_state.replace_on_input = false;
+                } else {
+                    prompt_state.input.insert(prompt_state.cursor_index, event.character());
+                    prompt_state.cursor_index += event.character().size();
+                }
                 return true;
             }
 
@@ -571,18 +621,12 @@ int main() {
                 const auto command = findCommandForKeys(keybindings, "Space " + event.character());
                 if (command.has_value()) {
                     if (command.value() == eCommand::ADD_WATCH) {
-                        prompt_state = {
-                            .mode  = ePromptMode::ADD_WATCH,
-                            .input = "",
-                        };
+                        prompt_state = beginPrompt(ePromptMode::ADD_WATCH);
                         return true;
                     }
                     if (command.value() == eCommand::EDIT_WATCH) {
                         if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
-                            prompt_state = {
-                                .mode  = ePromptMode::EDIT_WATCH,
-                                .input = watch_expressions[watch_list_pane.selected_index].expression,
-                            };
+                            prompt_state = beginPrompt(ePromptMode::EDIT_WATCH, watch_expressions[watch_list_pane.selected_index].expression, true);
                             return true;
                         }
                         return true;
@@ -600,10 +644,7 @@ int main() {
                         return true;
                     }
                     if (command.value() == eCommand::SET_MEMORY_TARGET) {
-                        prompt_state = {
-                            .mode  = ePromptMode::MEMORY_TARGET,
-                            .input = manual_memory_target,
-                        };
+                        prompt_state = beginPrompt(ePromptMode::MEMORY_TARGET, manual_memory_target);
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);
