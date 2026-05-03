@@ -707,19 +707,24 @@ int main() {
                         .show_memory_view      = app_config.show_memory_view,
                         .show_disassembly_view = app_config.show_disassembly_view,
     };
-    eFocusPane                    focused_pane      = normalizeFocusedPane(app_config.startup_focus, view_visibility);
-    const auto                    keybindings       = app_config.keybindings;
-    bool                          leader_pending    = false;
-    std::vector<SWatchExpression> watch_expressions = {
-        {.expression = "sample_value"},
-        {.expression = "sample_bytes"},
-    };
-    std::string       manual_memory_target = {};
-    SPromptState      prompt_state         = {};
-    SThemePickerState theme_picker_state   = {
-          .active          = false,
-          .original_preset = active_theme_preset,
-          .selected_index  = themePresetIndex(active_theme_preset),
+    eFocusPane                    focused_pane         = normalizeFocusedPane(app_config.startup_focus, view_visibility);
+    const auto                    keybindings          = app_config.keybindings;
+    bool                          leader_pending       = false;
+    std::vector<SWatchExpression> watch_expressions    = app_config.session_mode == eSessionMode::MOCK ?
+           std::vector<SWatchExpression>{
+            {.expression = "a"},
+            {.expression = "ptr"},
+        } :
+           std::vector<SWatchExpression>{
+            {.expression = "sample_value"},
+            {.expression = "sample_bytes"},
+        };
+    std::string                   manual_memory_target = {};
+    SPromptState                  prompt_state         = {};
+    SThemePickerState             theme_picker_state   = {
+                      .active          = false,
+                      .original_preset = active_theme_preset,
+                      .selected_index  = themePresetIndex(active_theme_preset),
     };
     eWatchActionMode     watch_action_mode = eWatchActionMode::NONE;
 

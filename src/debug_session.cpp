@@ -82,7 +82,7 @@ std::vector<SWatchResult> CMockDebugSession::evaluateWatches(const SDebugSelecti
                 .expression       = watch_expression.expression,
                 .value            = "42",
                 .type             = "int",
-                .memory_reference = "",
+                .memory_reference = "0x2000",
                 .error_message    = "",
             });
             continue;

@@ -85,6 +85,7 @@ TEST_CASE("mock debug session evaluates watch expressions") {
     REQUIRE(watch_results.size() == 5);
     CHECK(watch_results[0].value == "42");
     CHECK(watch_results[0].type == "int");
+    CHECK(watch_results[0].memory_reference == "0x2000");
     CHECK(watch_results[0].error_message.empty());
     CHECK(watch_results[1].value == "0x1000");
     CHECK(watch_results[1].type == "char*");
