@@ -179,7 +179,39 @@ namespace {
         return std::make_tuple(row.substr(0, first_separator), row.substr(first_separator + 2, second_separator - (first_separator + 2)), row.substr(second_separator + 2));
     }
 
-    ftxui::Element renderPaneRow(const std::string& row, bool is_selected, const SAppTheme& theme, bool is_memory_pane) {
+    std::optional<std::tuple<std::string, std::string, std::string>> splitLocalRow(const std::string& row) {
+        const auto type_separator = row.find(" : ");
+        if (type_separator == std::string::npos) {
+            return std::nullopt;
+        }
+
+        const auto value_separator = row.find(" = ", type_separator + 3);
+        if (value_separator == std::string::npos) {
+            return std::nullopt;
+        }
+
+        return std::make_tuple(row.substr(0, type_separator), row.substr(type_separator + 3, value_separator - (type_separator + 3)), row.substr(value_separator + 3));
+    }
+
+    std::optional<std::tuple<std::string, std::string, std::string, bool>> splitWatchRow(const std::string& row) {
+        const auto value_separator = row.find(" = ");
+        if (value_separator != std::string::npos) {
+            const auto type_separator = row.rfind(" : ");
+            if (type_separator != std::string::npos && type_separator > value_separator) {
+                return std::make_tuple(row.substr(0, value_separator), row.substr(value_separator + 3, type_separator - (value_separator + 3)), row.substr(type_separator + 3),
+                                       true);
+            }
+        }
+
+        const auto error_separator = row.find(" : ");
+        if (error_separator == std::string::npos) {
+            return std::nullopt;
+        }
+
+        return std::make_tuple(row.substr(0, error_separator), row.substr(error_separator + 3), std::string{}, false);
+    }
+
+    ftxui::Element renderPaneRow(const std::string& row, bool is_selected, const SAppTheme& theme, const std::string& pane_title, bool is_memory_pane) {
         using namespace ftxui;
 
         Element row_element;
@@ -187,22 +219,68 @@ namespace {
             const auto memory_parts = splitMemoryRow(row);
             if (memory_parts.has_value()) {
                 const auto& [address, hex_bytes, ascii] = memory_parts.value();
-                row_element                             = hbox({
-                    text(address) | color(theme.memory_address),
-                    text("  "),
-                    text(hex_bytes) | color(theme.memory_hex),
-                    text("  "),
-                    text(ascii) | color(theme.memory_ascii),
+                if (is_selected) {
+                    row_element = hbox({
+                        text(address) | color(theme.selected_memory_address),
+                        text("  ") | color(theme.selected_memory_hex),
+                        text(hex_bytes) | color(theme.selected_memory_hex),
+                        text("  ") | color(theme.selected_memory_hex),
+                        text(ascii) | color(theme.selected_memory_ascii),
+                    });
+                } else {
+                    row_element = hbox({
+                        text(address) | color(theme.memory_address),
+                        text("  "),
+                        text(hex_bytes) | color(theme.memory_hex),
+                        text("  "),
+                        text(ascii) | color(theme.memory_ascii),
+                    });
+                }
+            } else {
+                row_element = text(row) | color(is_selected ? theme.selected_foreground : theme.memory_ascii);
+            }
+        } else if (pane_title.find("Locals") != std::string::npos) {
+            const auto local_parts = splitLocalRow(row);
+            if (local_parts.has_value()) {
+                const auto& [name, type, value] = local_parts.value();
+                row_element                     = hbox({
+                    text(name) | color(is_selected ? theme.selected_variable_name : theme.variable_name),
+                    text(" : ") | color(is_selected ? theme.selected_foreground : theme.chrome),
+                    text(type) | color(is_selected ? theme.selected_variable_type : theme.variable_type),
+                    text(" = ") | color(is_selected ? theme.selected_foreground : theme.chrome),
+                    text(value) | color(is_selected ? theme.selected_foreground : theme.chrome),
                 });
             } else {
-                row_element = text(row) | color(theme.memory_ascii);
+                row_element = text(row) | color(is_selected ? theme.selected_foreground : theme.chrome);
+            }
+        } else if (pane_title.find("Watch List") != std::string::npos) {
+            const auto watch_parts = splitWatchRow(row);
+            if (watch_parts.has_value()) {
+                const auto& [expression, middle, type, has_type] = watch_parts.value();
+                if (has_type) {
+                    row_element = hbox({
+                        text(expression) | color(is_selected ? theme.selected_variable_name : theme.variable_name),
+                        text(" = ") | color(is_selected ? theme.selected_foreground : theme.chrome),
+                        text(middle) | color(is_selected ? theme.selected_foreground : theme.chrome),
+                        text(" : ") | color(is_selected ? theme.selected_foreground : theme.chrome),
+                        text(type) | color(is_selected ? theme.selected_variable_type : theme.variable_type),
+                    });
+                } else {
+                    row_element = hbox({
+                        text(expression) | color(is_selected ? theme.selected_variable_name : theme.variable_name),
+                        text(" : ") | color(is_selected ? theme.selected_foreground : theme.chrome),
+                        text(middle) | color(is_selected ? theme.selected_foreground : theme.chrome),
+                    });
+                }
+            } else {
+                row_element = text(row) | color(is_selected ? theme.selected_foreground : theme.chrome);
             }
         } else {
-            row_element = text(row) | color(theme.chrome);
+            row_element = text(row) | color(is_selected ? theme.selected_foreground : theme.chrome);
         }
 
         if (is_selected) {
-            row_element = row_element | bgcolor(theme.selected_background) | color(theme.selected_foreground);
+            row_element = row_element | bgcolor(theme.selected_background);
         }
 
         return row_element;
@@ -225,7 +303,7 @@ namespace {
         } else {
             const bool is_memory_pane = pane.title.find("Memory") != std::string::npos;
             for (std::size_t i = 0; i < pane.rows.size(); ++i) {
-                rows.push_back(renderPaneRow(pane.rows[i], is_focused && pane.selected_index == i, theme, is_memory_pane));
+                rows.push_back(renderPaneRow(pane.rows[i], is_focused && pane.selected_index == i, theme, pane.title, is_memory_pane));
             }
         }
 
@@ -614,8 +692,9 @@ int main() {
     using namespace ftxui;
 
     const SAppConfig        app_config                   = loadAppConfig("roundtable.toml");
+    const auto              buildActiveTheme             = [&](eThemePreset preset) { return applyThemeOverrides(buildTheme(preset), app_config.theme_overrides); };
     eThemePreset            active_theme_preset          = app_config.theme_preset;
-    SAppTheme               app_theme                    = buildTheme(active_theme_preset);
+    SAppTheme               app_theme                    = buildActiveTheme(active_theme_preset);
     SSessionBootstrapResult bootstrap_result             = bootstrapSession(app_config);
     auto&                   debug_session                = *bootstrap_result.session;
     SDebugSelection         debug_selection              = bootstrap_result.selection;
@@ -830,7 +909,7 @@ int main() {
         if (theme_picker_state.active) {
             if (event == Event::Escape) {
                 active_theme_preset      = theme_picker_state.original_preset;
-                app_theme                = buildTheme(active_theme_preset);
+                app_theme                = buildActiveTheme(active_theme_preset);
                 theme_picker_state       = {};
                 transient_status_message = {};
                 return true;
@@ -854,7 +933,7 @@ int main() {
             }
 
             active_theme_preset      = kThemePresets[theme_picker_state.selected_index];
-            app_theme                = buildTheme(active_theme_preset);
+            app_theme                = buildActiveTheme(active_theme_preset);
             transient_status_message = "Theme preview: " + themePresetName(active_theme_preset);
             return true;
         }

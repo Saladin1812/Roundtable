@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <fstream>
+#include <optional>
 #include <ranges>
 #include <string>
 
@@ -46,6 +48,83 @@ namespace {
         }
 
         return fallback;
+    }
+
+    std::optional<ftxui::Color> parseHexColor(std::string value) {
+        value = unquote(trim(std::move(value)));
+        if (value.size() != 7 || value.front() != '#') {
+            return std::nullopt;
+        }
+
+        const auto parse_channel = [&](std::size_t start) -> std::optional<std::uint8_t> {
+            unsigned int channel = 0;
+            const char*  begin   = value.data() + static_cast<std::ptrdiff_t>(start);
+            const char*  end     = begin + 2;
+            const auto   result  = std::from_chars(begin, end, channel, 16);
+            if (result.ec != std::errc{} || result.ptr != end || channel > 255U) {
+                return std::nullopt;
+            }
+
+            return static_cast<std::uint8_t>(channel);
+        };
+
+        const auto red   = parse_channel(1);
+        const auto green = parse_channel(3);
+        const auto blue  = parse_channel(5);
+        if (!red.has_value() || !green.has_value() || !blue.has_value()) {
+            return std::nullopt;
+        }
+
+        return ftxui::Color::RGB(red.value(), green.value(), blue.value());
+    }
+
+    void assignThemeOverride(SThemeOverrides& overrides, const std::string& key, const std::string& value) {
+        const auto parsed_color = parseHexColor(value);
+        if (!parsed_color.has_value()) {
+            return;
+        }
+
+        if (key == "chrome") {
+            overrides.chrome = parsed_color;
+        } else if (key == "accent") {
+            overrides.accent = parsed_color;
+        } else if (key == "title") {
+            overrides.title = parsed_color;
+        } else if (key == "selected_foreground") {
+            overrides.selected_foreground = parsed_color;
+        } else if (key == "selected_background") {
+            overrides.selected_background = parsed_color;
+        } else if (key == "variable_name") {
+            overrides.variable_name = parsed_color;
+        } else if (key == "variable_type") {
+            overrides.variable_type = parsed_color;
+        } else if (key == "selected_variable_name") {
+            overrides.selected_variable_name = parsed_color;
+        } else if (key == "selected_variable_type") {
+            overrides.selected_variable_type = parsed_color;
+        } else if (key == "memory_address") {
+            overrides.memory_address = parsed_color;
+        } else if (key == "memory_hex") {
+            overrides.memory_hex = parsed_color;
+        } else if (key == "memory_ascii") {
+            overrides.memory_ascii = parsed_color;
+        } else if (key == "selected_memory_address") {
+            overrides.selected_memory_address = parsed_color;
+        } else if (key == "selected_memory_hex") {
+            overrides.selected_memory_hex = parsed_color;
+        } else if (key == "selected_memory_ascii") {
+            overrides.selected_memory_ascii = parsed_color;
+        } else if (key == "hint_key") {
+            overrides.hint_key = parsed_color;
+        } else if (key == "hint_description") {
+            overrides.hint_description = parsed_color;
+        } else if (key == "hint_specific_key") {
+            overrides.hint_specific_key = parsed_color;
+        } else if (key == "hint_specific_text") {
+            overrides.hint_specific_text = parsed_color;
+        } else if (key == "overlay_border") {
+            overrides.overlay_border = parsed_color;
+        }
     }
 
     eSessionMode parseSessionMode(const std::string& value, eSessionMode fallback) {
@@ -118,6 +197,8 @@ SAppConfig loadAppConfig(const std::string& config_path) {
         if (current_section == "theme") {
             if (key == "preset") {
                 config.theme_preset = parseThemePreset(unquote(value), config.theme_preset);
+            } else {
+                assignThemeOverride(config.theme_overrides, key, value);
             }
             continue;
         }

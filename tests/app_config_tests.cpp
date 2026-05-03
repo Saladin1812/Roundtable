@@ -33,6 +33,12 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "\n";
         config_stream << "[theme]\n";
         config_stream << "preset = \"forest\"\n";
+        config_stream << "selected_background = \"#112233\"\n";
+        config_stream << "selected_foreground = \"#eeeeee\"\n";
+        config_stream << "variable_name = \"#abcdef\"\n";
+        config_stream << "selected_variable_type = \"#123456\"\n";
+        config_stream << "memory_address = \"#aa5500\"\n";
+        config_stream << "selected_memory_hex = \"#445566\"\n";
         config_stream << "\n";
         config_stream << "[dap_launch]\n";
         config_stream << "command = \"/tmp/codelldb\"\n";
@@ -55,6 +61,12 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     CHECK_FALSE(config.show_memory_view);
     CHECK(config.show_disassembly_view);
     CHECK(config.theme_preset == eThemePreset::FOREST);
+    CHECK(config.theme_overrides.selected_background == ftxui::Color::RGB(0x11, 0x22, 0x33));
+    CHECK(config.theme_overrides.selected_foreground == ftxui::Color::RGB(0xee, 0xee, 0xee));
+    CHECK(config.theme_overrides.variable_name == ftxui::Color::RGB(0xab, 0xcd, 0xef));
+    CHECK(config.theme_overrides.selected_variable_type == ftxui::Color::RGB(0x12, 0x34, 0x56));
+    CHECK(config.theme_overrides.memory_address == ftxui::Color::RGB(0xaa, 0x55, 0x00));
+    CHECK(config.theme_overrides.selected_memory_hex == ftxui::Color::RGB(0x44, 0x55, 0x66));
     CHECK(config.dap_launch.command == "/tmp/codelldb");
     CHECK(config.dap_launch.liblldb_path == "/tmp/liblldb.so");
     CHECK(config.dap_launch.program == "/tmp/sample");

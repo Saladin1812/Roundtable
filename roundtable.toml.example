@@ -8,6 +8,24 @@ show_disassembly = false
 
 [theme]
 preset = "default"
+# Any theme color can be overridden with #RRGGBB values.
+# selected_* controls selected rows and titles.
+# variable_* controls locals/watch expressions and types.
+# memory_* controls unselected memory rows.
+# selected_memory_* controls selected memory rows separately.
+# selected_background = "#343434"
+# selected_foreground = "#ffffff"
+# title = "#ffffff"
+# variable_name = "#ffffff"
+# variable_type = "#55ffff"
+# selected_variable_name = "#ffffff"
+# selected_variable_type = "#55ffff"
+# memory_address = "#ffff55"
+# memory_hex = "#ffffff"
+# memory_ascii = "#55ff55"
+# selected_memory_address = "#ffff55"
+# selected_memory_hex = "#ffffff"
+# selected_memory_ascii = "#55ff55"
 
 [dap_launch]
 command = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/adapter/codelldb"

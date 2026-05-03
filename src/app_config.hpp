@@ -27,6 +27,7 @@ struct SAppConfig {
     bool                     show_memory_view      = true;
     bool                     show_disassembly_view = false;
     eThemePreset             theme_preset          = eThemePreset::DEFAULT;
+    SThemeOverrides          theme_overrides       = {};
     SDapLaunchConfig         dap_launch            = {};
     std::vector<SKeybinding> keybindings           = defaultKeybindings();
 };
