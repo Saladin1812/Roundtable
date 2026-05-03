@@ -22,12 +22,19 @@ namespace {
     }
 
     std::string stripComment(std::string value) {
-        const auto comment_position = value.find('#');
-        if (comment_position == std::string::npos) {
-            return value;
+        bool inside_quotes = false;
+        for (std::size_t index = 0; index < value.size(); ++index) {
+            if (value[index] == '"') {
+                inside_quotes = !inside_quotes;
+                continue;
+            }
+
+            if (value[index] == '#' && !inside_quotes) {
+                return value.substr(0, index);
+            }
         }
 
-        return value.substr(0, comment_position);
+        return value;
     }
 
     std::string unquote(std::string value) {

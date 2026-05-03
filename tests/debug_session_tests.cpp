@@ -77,20 +77,23 @@ TEST_CASE("mock debug session evaluates watch expressions") {
     CMockDebugSession                   debug_session     = {};
     const SDebugSelection               debug_selection   = {};
     const std::vector<SWatchExpression> watch_expressions = {
-        {.expression = "a"},
-        {.expression = "ptr"},
-        {.expression = "missing_value"},
+        {.expression = "a"}, {.expression = "ptr"}, {.expression = "sample_value"}, {.expression = "sample_bytes"}, {.expression = "missing_value"},
     };
 
     const std::vector<SWatchResult> watch_results = debug_session.evaluateWatches(debug_selection, watch_expressions);
 
-    REQUIRE(watch_results.size() == 3);
+    REQUIRE(watch_results.size() == 5);
     CHECK(watch_results[0].value == "42");
     CHECK(watch_results[0].type == "int");
     CHECK(watch_results[0].error_message.empty());
     CHECK(watch_results[1].value == "0x1000");
     CHECK(watch_results[1].type == "char*");
-    CHECK(watch_results[2].error_message == "Expression could not be evaluated");
+    CHECK(watch_results[2].value == "42");
+    CHECK(watch_results[2].type == "int");
+    CHECK(watch_results[2].memory_reference == "0x2000");
+    CHECK(watch_results[3].value == "{_M_elems:\"Hello!\\0A\"}");
+    CHECK(watch_results[3].type == "std::array<unsigned char, 8>");
+    CHECK(watch_results[4].error_message == "Expression could not be evaluated");
 }
 
 TEST_CASE("mock debug session returns disassembly from a start address") {
