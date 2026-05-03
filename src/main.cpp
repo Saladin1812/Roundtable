@@ -691,24 +691,24 @@ namespace {
 int main() {
     using namespace ftxui;
 
-    const SAppConfig        app_config                   = loadAppConfig("roundtable.toml");
-    const auto              buildActiveTheme             = [&](eThemePreset preset) { return applyThemeOverrides(buildTheme(preset), app_config.theme_overrides); };
-    eThemePreset            active_theme_preset          = app_config.theme_preset;
-    SAppTheme               app_theme                    = buildActiveTheme(active_theme_preset);
-    SSessionBootstrapResult bootstrap_result             = bootstrapSession(app_config);
-    auto&                   debug_session                = *bootstrap_result.session;
-    SDebugSelection         debug_selection              = bootstrap_result.selection;
-    std::uint64_t           disassembly_start_address    = bootstrap_result.disassembly_start_address;
-    std::string             disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
-    const std::string       base_session_status          = bootstrap_result.status_message;
-    std::string             transient_status_message     = {};
-    auto                    screen                       = ScreenInteractive::Fullscreen();
-    SViewVisibilityState    view_visibility              = {
-                        .show_memory_view      = app_config.show_memory_view,
-                        .show_disassembly_view = app_config.show_disassembly_view,
+    SAppConfig                     app_config                   = loadAppConfig("roundtable.toml");
+    const auto                     buildActiveTheme             = [&](eThemePreset preset) { return applyThemeOverrides(buildTheme(preset), app_config.theme_overrides); };
+    eThemePreset                   active_theme_preset          = app_config.theme_preset;
+    SAppTheme                      app_theme                    = buildActiveTheme(active_theme_preset);
+    SSessionBootstrapResult        bootstrap_result             = bootstrapSession(app_config);
+    std::unique_ptr<IDebugSession> debug_session                = std::move(bootstrap_result.session);
+    SDebugSelection                debug_selection              = bootstrap_result.selection;
+    std::uint64_t                  disassembly_start_address    = bootstrap_result.disassembly_start_address;
+    std::string                    disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
+    std::string                    base_session_status          = bootstrap_result.status_message;
+    std::string                    transient_status_message     = {};
+    auto                           screen                       = ScreenInteractive::Fullscreen();
+    SViewVisibilityState           view_visibility              = {
+                               .show_memory_view      = app_config.show_memory_view,
+                               .show_disassembly_view = app_config.show_disassembly_view,
     };
     eFocusPane                    focused_pane         = normalizeFocusedPane(app_config.startup_focus, view_visibility);
-    const auto                    keybindings          = app_config.keybindings;
+    std::vector<SKeybinding>      keybindings          = app_config.keybindings;
     bool                          leader_pending       = false;
     std::vector<SWatchExpression> watch_expressions    = app_config.session_mode == eSessionMode::MOCK ?
            std::vector<SWatchExpression>{
@@ -745,7 +745,34 @@ int main() {
         .rows  = {},
     };
 
-    refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
+    const auto reloadConfig = [&] {
+        app_config                            = loadAppConfig("roundtable.toml");
+        keybindings                           = app_config.keybindings;
+        active_theme_preset                   = app_config.theme_preset;
+        app_theme                             = buildActiveTheme(active_theme_preset);
+        view_visibility.show_memory_view      = app_config.show_memory_view;
+        view_visibility.show_disassembly_view = app_config.show_disassembly_view;
+        focused_pane                          = normalizeFocusedPane(focused_pane, view_visibility);
+
+        theme_picker_state = {
+            .active          = false,
+            .original_preset = active_theme_preset,
+            .selected_index  = themePresetIndex(active_theme_preset),
+        };
+
+        bootstrap_result             = bootstrapSession(app_config);
+        debug_session                = std::move(bootstrap_result.session);
+        debug_selection              = bootstrap_result.selection;
+        disassembly_start_address    = bootstrap_result.disassembly_start_address;
+        disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
+        base_session_status          = bootstrap_result.status_message;
+        transient_status_message     = "Config reloaded";
+
+        refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
+                        focused_pane, watch_expressions, manual_memory_target);
+    };
+
+    refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
                     focused_pane, watch_expressions, manual_memory_target);
 
     auto renderer = Renderer([&] {
@@ -836,7 +863,7 @@ int main() {
                 }
 
                 prompt_state = {};
-                refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                 disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
                 return true;
             }
@@ -961,7 +988,7 @@ int main() {
                         if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
                             --watch_list_pane.selected_index;
                         }
-                        refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                        refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                         disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
                     }
                 }
@@ -973,7 +1000,7 @@ int main() {
 
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
-                refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                 disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             }
             return true;
@@ -985,7 +1012,7 @@ int main() {
         }
 
         if (event == Event::Character('r')) {
-            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                             disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             return true;
         }
@@ -1019,7 +1046,7 @@ int main() {
                             focused_pane             = eFocusPane::WATCH_LIST;
                             watch_action_mode        = eWatchActionMode::EDIT;
                             transient_status_message = "Choose watch with j/k, press Return to edit, Esc to cancel";
-                            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                             disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
                             return true;
                         }
@@ -1038,7 +1065,7 @@ int main() {
                             focused_pane             = eFocusPane::WATCH_LIST;
                             watch_action_mode        = eWatchActionMode::REMOVE;
                             transient_status_message = "Choose watch with j/k, press Return to remove, Esc to cancel";
-                            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                             disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
                             return true;
                         }
@@ -1048,7 +1075,7 @@ int main() {
                                 --watch_list_pane.selected_index;
                             }
                             focused_pane = eFocusPane::WATCH_LIST;
-                            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                             disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
                         }
                         return true;
@@ -1066,8 +1093,12 @@ int main() {
                         transient_status_message = "Theme preview: " + themePresetName(active_theme_preset);
                         return true;
                     }
+                    if (command.value() == eCommand::RELOAD_CONFIG) {
+                        reloadConfig();
+                        return true;
+                    }
                     executeCommand(command.value(), focused_pane, view_visibility);
-                    refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                    refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                     disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
                     return true;
                 }
@@ -1083,7 +1114,7 @@ int main() {
 
         if (event == Event::Tab) {
             focused_pane = advanceFocusPane(focused_pane, view_visibility);
-            refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                             disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             return true;
         }
@@ -1091,7 +1122,7 @@ int main() {
         if (focused_pane == eFocusPane::LOCALS) {
             const bool handled = handleVerticalNavigation(event, locals_pane);
             if (handled) {
-                refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                 disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             }
             return handled;
@@ -1099,7 +1130,7 @@ int main() {
         if (focused_pane == eFocusPane::WATCH_LIST) {
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
-                refreshPaneRows(debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
+                refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
                                 disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target);
             }
             return handled;

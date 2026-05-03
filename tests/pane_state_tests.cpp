@@ -54,6 +54,8 @@ TEST_CASE("parseCommandName returns commands for known names") {
     CHECK(parseCommandName("set_memory_target").value() == eCommand::SET_MEMORY_TARGET);
     REQUIRE(parseCommandName("cycle_theme").has_value());
     CHECK(parseCommandName("cycle_theme").value() == eCommand::CYCLE_THEME);
+    REQUIRE(parseCommandName("reload_config").has_value());
+    CHECK(parseCommandName("reload_config").value() == eCommand::RELOAD_CONFIG);
     CHECK_FALSE(parseCommandName("missing_command").has_value());
 }
 
