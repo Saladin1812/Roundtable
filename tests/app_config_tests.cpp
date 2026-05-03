@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -80,18 +81,15 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     CHECK_FALSE(config.dap_launch.stop_on_entry);
     CHECK(config.dap_launch.continue_once);
 
-    const auto memory_keybinding =
-        std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_MEMORY; });
+    const auto memory_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_MEMORY; });
     REQUIRE(memory_keybinding != config.keybindings.end());
     CHECK(memory_keybinding->keys == "Space x");
 
-    const auto help_keybinding =
-        std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_SHORTCUTS_HELP; });
+    const auto help_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_SHORTCUTS_HELP; });
     REQUIRE(help_keybinding != config.keybindings.end());
     CHECK(help_keybinding->keys == "Space h");
 
-    const auto theme_keybinding =
-        std::find_if(config.keybindings.begin(), config.keybindings.end(), [](const SKeybinding& keybinding) { return keybinding.command == eCommand::CYCLE_THEME; });
+    const auto theme_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::CYCLE_THEME; });
     REQUIRE(theme_keybinding != config.keybindings.end());
     CHECK(theme_keybinding->keys == "Space C");
 

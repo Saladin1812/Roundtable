@@ -124,7 +124,7 @@ std::vector<SWatchResult> CMockDebugSession::evaluateWatches(const SDebugSelecti
         if (watch_expression.expression == "sample_bytes") {
             watch_results.push_back({
                 .expression       = watch_expression.expression,
-                .value            = "{_M_elems:\"Hello!\\0A\"}",
+                .value            = R"({_M_elems:"Hello!\0A"})",
                 .type             = "std::array<unsigned char, 8>",
                 .memory_reference = "",
                 .error_message    = "",
