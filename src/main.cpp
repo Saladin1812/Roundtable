@@ -222,34 +222,125 @@ namespace {
         return std::make_tuple(row.substr(0, error_separator), row.substr(error_separator + 3), std::string{}, false);
     }
 
-    ftxui::Element renderPaneRow(const std::string& row, bool is_selected, const SAppTheme& theme, const std::string& pane_title, bool is_memory_pane) {
+    struct SMemoryRenderContext {
+        std::optional<SMemoryByteHighlight> highlight;
+    };
+
+    std::vector<std::string> splitMemoryByteTokens(const std::string& hex_bytes) {
+        std::vector<std::string> tokens;
+        std::size_t              token_start = 0;
+
+        while (token_start < hex_bytes.size()) {
+            const auto separator = hex_bytes.find(' ', token_start);
+            if (separator == std::string::npos) {
+                tokens.push_back(hex_bytes.substr(token_start));
+                break;
+            }
+
+            if (separator > token_start) {
+                tokens.push_back(hex_bytes.substr(token_start, separator - token_start));
+            }
+
+            token_start = separator + 1;
+        }
+
+        return tokens;
+    }
+
+    bool isHighlightedMemoryByte(const SMemoryByteHighlight& highlight, std::size_t row_index, std::size_t byte_index) {
+        if (highlight.byte_count == 0) {
+            return false;
+        }
+
+        if (highlight.synthetic) {
+            const std::size_t absolute_offset = row_index * highlight.row_stride + byte_index;
+            return absolute_offset >= highlight.start_offset && absolute_offset < highlight.start_offset + highlight.byte_count;
+        }
+
+        const std::uint64_t absolute_address = highlight.start_address + static_cast<std::uint64_t>(row_index * highlight.row_stride + byte_index);
+        return absolute_address >= highlight.start_address && absolute_address < highlight.start_address + highlight.byte_count;
+    }
+
+    ftxui::Element renderMemoryRow(const std::string& row, std::size_t row_index, bool is_selected, const SAppTheme& theme, const SMemoryRenderContext& memory_context) {
+        using namespace ftxui;
+
+        const auto memory_parts = splitMemoryRow(row);
+        if (!memory_parts.has_value()) {
+            auto fallback = text(row) | color(is_selected ? theme.selected_foreground : theme.memory_ascii);
+            if (is_selected) {
+                fallback = fallback | bgcolor(theme.selected_background);
+            }
+            return fallback;
+        }
+
+        const auto& [address, hex_bytes, ascii] = memory_parts.value();
+        const auto  byte_tokens                  = splitMemoryByteTokens(hex_bytes);
+
+        Elements hex_elements;
+        Elements ascii_elements;
+        hex_elements.reserve(byte_tokens.size() * 2);
+        ascii_elements.reserve(ascii.size());
+
+        const auto default_hex_color   = is_selected ? theme.selected_memory_hex : theme.memory_hex;
+        const auto default_ascii_color = is_selected ? theme.selected_memory_ascii : theme.memory_ascii;
+        const auto row_background      = theme.selected_background;
+
+        for (std::size_t byte_index = 0; byte_index < byte_tokens.size(); ++byte_index) {
+            const bool highlighted = memory_context.highlight.has_value() && isHighlightedMemoryByte(memory_context.highlight.value(), row_index, byte_index);
+
+            auto hex_element = text(byte_tokens[byte_index]) |
+                color(highlighted ? (is_selected ? theme.selected_memory_highlight_hex : theme.memory_highlight_hex) : default_hex_color);
+            auto ascii_element = text(byte_index < ascii.size() ? std::string(1, ascii[byte_index]) : "") |
+                color(highlighted ? (is_selected ? theme.selected_memory_highlight_ascii : theme.memory_highlight_ascii) : default_ascii_color);
+
+            if (is_selected) {
+                hex_element   = hex_element | bgcolor(row_background);
+                ascii_element = ascii_element | bgcolor(row_background);
+            }
+
+            if (highlighted) {
+                hex_element = hex_element | bgcolor(is_selected ? theme.selected_memory_highlight_hex_background : theme.memory_highlight_hex_background);
+                ascii_element = ascii_element | bgcolor(is_selected ? theme.selected_memory_highlight_ascii_background : theme.memory_highlight_ascii_background);
+            }
+
+            hex_elements.push_back(hex_element);
+            if (byte_index + 1 < byte_tokens.size()) {
+                auto separator = text(" ") | color(default_hex_color);
+                if (is_selected) {
+                    separator = separator | bgcolor(row_background);
+                }
+                hex_elements.push_back(separator);
+            }
+
+            ascii_elements.push_back(ascii_element);
+        }
+
+        auto address_element = text(address) | color(is_selected ? theme.selected_memory_address : theme.memory_address);
+        auto spacing_element = text("  ") | color(default_hex_color);
+        auto middle_spacing  = text("  ") | color(default_hex_color);
+
+        if (is_selected) {
+            address_element = address_element | bgcolor(row_background);
+            spacing_element = spacing_element | bgcolor(row_background);
+            middle_spacing  = middle_spacing | bgcolor(row_background);
+        }
+
+        return hbox({
+            address_element,
+            spacing_element,
+            hbox(std::move(hex_elements)),
+            middle_spacing,
+            hbox(std::move(ascii_elements)),
+        });
+    }
+
+    ftxui::Element renderPaneRow(const std::string& row, std::size_t row_index, bool is_selected, const SAppTheme& theme, const std::string& pane_title, bool is_memory_pane,
+                                 const SMemoryRenderContext& memory_context) {
         using namespace ftxui;
 
         Element row_element;
         if (is_memory_pane) {
-            const auto memory_parts = splitMemoryRow(row);
-            if (memory_parts.has_value()) {
-                const auto& [address, hex_bytes, ascii] = memory_parts.value();
-                if (is_selected) {
-                    row_element = hbox({
-                        text(address) | color(theme.selected_memory_address),
-                        text("  ") | color(theme.selected_memory_hex),
-                        text(hex_bytes) | color(theme.selected_memory_hex),
-                        text("  ") | color(theme.selected_memory_hex),
-                        text(ascii) | color(theme.selected_memory_ascii),
-                    });
-                } else {
-                    row_element = hbox({
-                        text(address) | color(theme.memory_address),
-                        text("  "),
-                        text(hex_bytes) | color(theme.memory_hex),
-                        text("  "),
-                        text(ascii) | color(theme.memory_ascii),
-                    });
-                }
-            } else {
-                row_element = text(row) | color(is_selected ? theme.selected_foreground : theme.memory_ascii);
-            }
+            row_element = renderMemoryRow(row, row_index, is_selected, theme, memory_context);
         } else if (pane_title.find("Locals") != std::string::npos) {
             const auto local_parts = splitLocalRow(row);
             if (local_parts.has_value()) {
@@ -290,14 +381,14 @@ namespace {
             row_element = text(row) | color(is_selected ? theme.selected_foreground : theme.chrome);
         }
 
-        if (is_selected) {
+        if (is_selected && !is_memory_pane) {
             row_element = row_element | bgcolor(theme.selected_background);
         }
 
         return row_element;
     }
 
-    ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused, const SAppTheme& theme) {
+    ftxui::Element renderSelectablePane(const SSelectablePaneState& pane, bool is_focused, const SAppTheme& theme, const SMemoryRenderContext& memory_context = {}) {
         using namespace ftxui;
 
         Elements rows;
@@ -314,7 +405,7 @@ namespace {
         } else {
             const bool is_memory_pane = pane.title.find("Memory") != std::string::npos;
             for (std::size_t i = 0; i < pane.rows.size(); ++i) {
-                rows.push_back(renderPaneRow(pane.rows[i], is_focused && pane.selected_index == i, theme, pane.title, is_memory_pane));
+                rows.push_back(renderPaneRow(pane.rows[i], i, is_focused && pane.selected_index == i, theme, pane.title, is_memory_pane, memory_context));
             }
         }
 
@@ -434,7 +525,7 @@ namespace {
     }
 
     ftxui::Element renderAuxiliaryViews(const SViewVisibilityState& view_visibility, const SSelectablePaneState& memory_view_pane, const SSelectablePaneState& disassembly_pane,
-                                        eFocusPane focused_pane, const SAppTheme& theme) {
+                                        eFocusPane focused_pane, const SAppTheme& theme, const SMemoryRenderContext& memory_context) {
         using namespace ftxui;
 
         const bool show_memory       = view_visibility.show_memory_view;
@@ -444,14 +535,14 @@ namespace {
 
         if (show_memory && show_disassembly) {
             return hbox({
-                       renderSelectablePane(memory_view_pane, memory_is_focused, theme) | flex,
+                       renderSelectablePane(memory_view_pane, memory_is_focused, theme, memory_context) | flex,
                        renderSelectablePane(disassembly_pane, disasm_is_focused, theme) | flex,
                    }) |
                 flex;
         }
 
         if (show_memory) {
-            return renderSelectablePane(memory_view_pane, memory_is_focused, theme) | flex;
+            return renderSelectablePane(memory_view_pane, memory_is_focused, theme, memory_context) | flex;
         }
 
         if (show_disassembly) {
@@ -624,31 +715,35 @@ namespace {
     void refreshPaneRows(IDebugSession& debug_session, const SDebugSelection& debug_selection, SSelectablePaneState& locals_pane, SSelectablePaneState& memory_view_pane,
                          SSelectablePaneState& disassembly_pane, SSelectablePaneState& watch_list_pane, std::uint64_t disassembly_start_address,
                          const std::string& disassembly_memory_reference, eFocusPane focused_pane, const std::vector<SWatchExpression>& watch_expressions,
-                         const std::string& manual_memory_target, std::string& memory_target_label) {
+                         const std::string& manual_memory_target, std::string& memory_target_label, SMemoryRenderContext& memory_context) {
         const auto locals        = debug_session.getLocals(debug_selection);
         const auto watch_results = debug_session.evaluateWatches(debug_selection, watch_expressions);
         locals_pane.rows         = formatLocalsPaneRows(locals);
         watch_list_pane.rows     = formatWatchListPaneRows(watch_results);
         memory_target_label      = compactMemoryTargetLabel("IP");
+        memory_context.highlight.reset();
 
         if (!manual_memory_target.empty()) {
             memory_target_label = compactMemoryTargetLabel("M", manual_memory_target);
             if (const auto direct_address = findFirstHexAddress(manual_memory_target); direct_address.has_value()) {
+                const SMemoryReadRequest memory_read_request = {
+                    .start_address    = direct_address.value(),
+                    .memory_reference = "",
+                    .byte_count       = 40,
+                    .bytes_per_row    = 8,
+                };
                 const auto memory_read_result = debug_session.readMemory(debug_selection,
-                                                                         {
-                                                                             .start_address    = direct_address.value(),
-                                                                             .memory_reference = "",
-                                                                             .byte_count       = 40,
-                                                                             .bytes_per_row    = 8,
-                                                                         });
+                                                                         memory_read_request);
                 memory_view_pane.rows         = generateMemoryViewRows(memory_read_result);
             } else {
                 const std::vector<SWatchResult> memory_target_results = debug_session.evaluateWatches(debug_selection, {{.expression = manual_memory_target}});
                 const auto                      memory_read_request   = buildMemoryReadRequest(memory_target_results, 0, disassembly_start_address, disassembly_memory_reference);
                 const auto                      memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
                 const auto                      synthetic_memory_rows = buildSyntheticMemoryRows(memory_target_results, 0, memory_read_request.bytes_per_row);
+                const bool                      using_synthetic_rows  = synthetic_memory_rows.has_value();
                 const bool                      target_has_explicit_memory_reference = !memory_target_results.empty() && !memory_target_results.front().memory_reference.empty() &&
                     findFirstHexAddress(memory_target_results.front().memory_reference).has_value();
+                memory_context.highlight = buildMemoryByteHighlight(memory_target_results, 0, memory_read_request, using_synthetic_rows && !target_has_explicit_memory_reference);
 
                 if (synthetic_memory_rows.has_value() && !target_has_explicit_memory_reference) {
                     memory_view_pane.rows = synthetic_memory_rows.value();
@@ -664,8 +759,11 @@ namespace {
             const auto memory_read_request   = buildMemoryReadRequest(watch_results, watch_list_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
             const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
             const auto synthetic_memory_rows = buildSyntheticMemoryRows(watch_results, watch_list_pane.selected_index, memory_read_request.bytes_per_row);
+            const bool using_synthetic_rows  = synthetic_memory_rows.has_value();
             const bool selected_watch_has_explicit_memory_reference =
                 !watch_results[selected_watch_index].memory_reference.empty() && findFirstHexAddress(watch_results[selected_watch_index].memory_reference).has_value();
+            memory_context.highlight =
+                buildMemoryByteHighlight(watch_results, watch_list_pane.selected_index, memory_read_request, using_synthetic_rows && !selected_watch_has_explicit_memory_reference);
 
             if (synthetic_memory_rows.has_value() && !selected_watch_has_explicit_memory_reference) {
                 memory_view_pane.rows = synthetic_memory_rows.value();
@@ -683,9 +781,12 @@ namespace {
                 buildMemoryReadRequest(debug_session, debug_selection, locals, locals_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
             const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
             const auto synthetic_memory_rows = buildSyntheticMemoryRows(locals, locals_pane.selected_index, memory_read_request.bytes_per_row);
+            const bool using_synthetic_rows  = synthetic_memory_rows.has_value();
             const auto selected_local_index  = locals.empty() ? 0UL : std::min(locals_pane.selected_index, locals.size() - 1);
             const bool selected_local_has_explicit_memory_reference =
                 !locals.empty() && !locals[selected_local_index].memory_reference.empty() && findFirstHexAddress(locals[selected_local_index].memory_reference).has_value();
+            memory_context.highlight =
+                buildMemoryByteHighlight(locals, locals_pane.selected_index, memory_read_request, using_synthetic_rows && !selected_local_has_explicit_memory_reference);
 
             if (synthetic_memory_rows.has_value() && !selected_local_has_explicit_memory_reference) {
                 memory_view_pane.rows = synthetic_memory_rows.value();
@@ -764,7 +865,8 @@ int main() {
         .title = " Watch List ",
         .rows  = {},
     };
-    std::string memory_target_label = {};
+    std::string          memory_target_label = {};
+    SMemoryRenderContext memory_context      = {};
 
     const auto reloadConfig = [&] {
         app_config                            = loadAppConfig("roundtable.toml");
@@ -790,17 +892,17 @@ int main() {
         transient_status_message     = "Config reloaded";
 
         refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
-                        focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                        focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
     };
 
     refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
-                    focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                    focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
 
     auto renderer = Renderer([&] {
         const std::string current_status  = transient_status_message.empty() ? base_session_status : transient_status_message;
         Element           locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
         Element           watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
-        Element           auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme);
+        Element           auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme, memory_context);
 
         Elements          status_items = {
             text(" Roundtable ") | bgcolor(app_theme.selected_background) | color(app_theme.selected_foreground),
@@ -885,7 +987,7 @@ int main() {
 
                 prompt_state = {};
                 refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
                 return true;
             }
 
@@ -1010,7 +1112,7 @@ int main() {
                             --watch_list_pane.selected_index;
                         }
                         refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                        disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                        disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
                     }
                 }
 
@@ -1022,7 +1124,7 @@ int main() {
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
                 refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
             }
             return true;
         }
@@ -1034,7 +1136,7 @@ int main() {
 
         if (event == Event::Character('r')) {
             refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
             return true;
         }
 
@@ -1068,7 +1170,7 @@ int main() {
                             watch_action_mode        = eWatchActionMode::EDIT;
                             transient_status_message = "Choose watch with j/k, press Return to edit, Esc to cancel";
                             refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
                             return true;
                         }
                         if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
@@ -1087,7 +1189,7 @@ int main() {
                             watch_action_mode        = eWatchActionMode::REMOVE;
                             transient_status_message = "Choose watch with j/k, press Return to remove, Esc to cancel";
                             refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
                             return true;
                         }
                         if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
@@ -1097,7 +1199,7 @@ int main() {
                             }
                             focused_pane = eFocusPane::WATCH_LIST;
                             refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
                         }
                         return true;
                     }
@@ -1120,7 +1222,7 @@ int main() {
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);
                     refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                    disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                    disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
                     return true;
                 }
             }
@@ -1136,7 +1238,7 @@ int main() {
         if (event == Event::Tab) {
             focused_pane = advanceFocusPane(focused_pane, view_visibility);
             refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
             return true;
         }
 
@@ -1144,7 +1246,7 @@ int main() {
             const bool handled = handleVerticalNavigation(event, locals_pane);
             if (handled) {
                 refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
             }
             return handled;
         }
@@ -1152,7 +1254,7 @@ int main() {
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
                 refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label);
+                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
             }
             return handled;
         }

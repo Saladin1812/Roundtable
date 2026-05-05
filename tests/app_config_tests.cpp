@@ -39,6 +39,8 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "selected_variable_type = \"#123456\"\n";
         config_stream << "memory_address = \"#aa5500\"\n";
         config_stream << "selected_memory_hex = \"#445566\"\n";
+        config_stream << "memory_highlight_ascii_background = \"#203040\"\n";
+        config_stream << "selected_memory_highlight_hex = \"#fedcba\"\n";
         config_stream << "\n";
         config_stream << "[dap_launch]\n";
         config_stream << "command = \"/tmp/codelldb\"\n";
@@ -67,12 +69,16 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     REQUIRE(config.theme_overrides.selected_variable_type.has_value());
     REQUIRE(config.theme_overrides.memory_address.has_value());
     REQUIRE(config.theme_overrides.selected_memory_hex.has_value());
+    REQUIRE(config.theme_overrides.memory_highlight_ascii_background.has_value());
+    REQUIRE(config.theme_overrides.selected_memory_highlight_hex.has_value());
     CHECK(config.theme_overrides.selected_background.value() == ftxui::Color::RGB(0x11, 0x22, 0x33));
     CHECK(config.theme_overrides.selected_foreground.value() == ftxui::Color::RGB(0xee, 0xee, 0xee));
     CHECK(config.theme_overrides.variable_name.value() == ftxui::Color::RGB(0xab, 0xcd, 0xef));
     CHECK(config.theme_overrides.selected_variable_type.value() == ftxui::Color::RGB(0x12, 0x34, 0x56));
     CHECK(config.theme_overrides.memory_address.value() == ftxui::Color::RGB(0xaa, 0x55, 0x00));
     CHECK(config.theme_overrides.selected_memory_hex.value() == ftxui::Color::RGB(0x44, 0x55, 0x66));
+    CHECK(config.theme_overrides.memory_highlight_ascii_background.value() == ftxui::Color::RGB(0x20, 0x30, 0x40));
+    CHECK(config.theme_overrides.selected_memory_highlight_hex.value() == ftxui::Color::RGB(0xfe, 0xdc, 0xba));
     CHECK(config.dap_launch.command == "/tmp/codelldb");
     CHECK(config.dap_launch.liblldb_path == "/tmp/liblldb.so");
     CHECK(config.dap_launch.program == "/tmp/sample");

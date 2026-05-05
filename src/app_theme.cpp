@@ -46,6 +46,14 @@ SAppTheme buildTheme(eThemePreset preset) {
                 .selected_memory_address = ftxui::Color::YellowLight,
                 .selected_memory_hex     = ftxui::Color::White,
                 .selected_memory_ascii   = ftxui::Color::GreenLight,
+                .memory_highlight_hex                 = ftxui::Color::Black,
+                .memory_highlight_hex_background      = ftxui::Color::YellowLight,
+                .memory_highlight_ascii               = ftxui::Color::Black,
+                .memory_highlight_ascii_background    = ftxui::Color::GreenLight,
+                .selected_memory_highlight_hex        = ftxui::Color::Black,
+                .selected_memory_highlight_hex_background = ftxui::Color::YellowLight,
+                .selected_memory_highlight_ascii      = ftxui::Color::Black,
+                .selected_memory_highlight_ascii_background = ftxui::Color::GreenLight,
                 .hint_key                = ftxui::Color::YellowLight,
                 .hint_description        = ftxui::Color::White,
                 .hint_specific_key       = ftxui::Color::RedLight,
@@ -69,6 +77,14 @@ SAppTheme buildTheme(eThemePreset preset) {
                 .selected_memory_address = ftxui::Color::BlueLight,
                 .selected_memory_hex     = ftxui::Color::White,
                 .selected_memory_ascii   = ftxui::Color::CyanLight,
+                .memory_highlight_hex                 = ftxui::Color::Black,
+                .memory_highlight_hex_background      = ftxui::Color::CyanLight,
+                .memory_highlight_ascii               = ftxui::Color::Black,
+                .memory_highlight_ascii_background    = ftxui::Color::BlueLight,
+                .selected_memory_highlight_hex        = ftxui::Color::Black,
+                .selected_memory_highlight_hex_background = ftxui::Color::CyanLight,
+                .selected_memory_highlight_ascii      = ftxui::Color::Black,
+                .selected_memory_highlight_ascii_background = ftxui::Color::BlueLight,
                 .hint_key                = ftxui::Color::CyanLight,
                 .hint_description        = ftxui::Color::White,
                 .hint_specific_key       = ftxui::Color::BlueLight,
@@ -92,6 +108,14 @@ SAppTheme buildTheme(eThemePreset preset) {
                 .selected_memory_address = ftxui::Color::YellowLight,
                 .selected_memory_hex     = ftxui::Color::White,
                 .selected_memory_ascii   = ftxui::Color::GreenLight,
+                .memory_highlight_hex                 = ftxui::Color::Black,
+                .memory_highlight_hex_background      = ftxui::Color::YellowLight,
+                .memory_highlight_ascii               = ftxui::Color::Black,
+                .memory_highlight_ascii_background    = ftxui::Color::GreenLight,
+                .selected_memory_highlight_hex        = ftxui::Color::Black,
+                .selected_memory_highlight_hex_background = ftxui::Color::YellowLight,
+                .selected_memory_highlight_ascii      = ftxui::Color::Black,
+                .selected_memory_highlight_ascii_background = ftxui::Color::GreenLight,
                 .hint_key                = ftxui::Color::GreenLight,
                 .hint_description        = ftxui::Color::White,
                 .hint_specific_key       = ftxui::Color::YellowLight,
@@ -116,6 +140,14 @@ SAppTheme buildTheme(eThemePreset preset) {
                 .selected_memory_address = ftxui::Color::YellowLight,
                 .selected_memory_hex     = ftxui::Color::White,
                 .selected_memory_ascii   = ftxui::Color::GreenLight,
+                .memory_highlight_hex                 = ftxui::Color::Black,
+                .memory_highlight_hex_background      = ftxui::Color::YellowLight,
+                .memory_highlight_ascii               = ftxui::Color::Black,
+                .memory_highlight_ascii_background    = ftxui::Color::GreenLight,
+                .selected_memory_highlight_hex        = ftxui::Color::Black,
+                .selected_memory_highlight_hex_background = ftxui::Color::YellowLight,
+                .selected_memory_highlight_ascii      = ftxui::Color::Black,
+                .selected_memory_highlight_ascii_background = ftxui::Color::GreenLight,
                 .hint_key                = ftxui::Color::CyanLight,
                 .hint_description        = ftxui::Color::White,
                 .hint_specific_key       = ftxui::Color::YellowLight,
@@ -141,6 +173,14 @@ SAppTheme applyThemeOverrides(SAppTheme theme, const SThemeOverrides& overrides)
     applyOverride(theme.selected_memory_address, overrides.selected_memory_address);
     applyOverride(theme.selected_memory_hex, overrides.selected_memory_hex);
     applyOverride(theme.selected_memory_ascii, overrides.selected_memory_ascii);
+    applyOverride(theme.memory_highlight_hex, overrides.memory_highlight_hex);
+    applyOverride(theme.memory_highlight_hex_background, overrides.memory_highlight_hex_background);
+    applyOverride(theme.memory_highlight_ascii, overrides.memory_highlight_ascii);
+    applyOverride(theme.memory_highlight_ascii_background, overrides.memory_highlight_ascii_background);
+    applyOverride(theme.selected_memory_highlight_hex, overrides.selected_memory_highlight_hex);
+    applyOverride(theme.selected_memory_highlight_hex_background, overrides.selected_memory_highlight_hex_background);
+    applyOverride(theme.selected_memory_highlight_ascii, overrides.selected_memory_highlight_ascii);
+    applyOverride(theme.selected_memory_highlight_ascii_background, overrides.selected_memory_highlight_ascii_background);
     applyOverride(theme.hint_key, overrides.hint_key);
     applyOverride(theme.hint_description, overrides.hint_description);
     applyOverride(theme.hint_specific_key, overrides.hint_specific_key);

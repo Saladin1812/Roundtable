@@ -99,6 +99,67 @@ namespace {
         return formatSyntheticMemoryRows(parsed_bytes.value(), bytes_per_row);
     }
 
+    template <typename TItem>
+    std::optional<std::size_t> inferScalarByteCount(const TItem& item) {
+        if (item.type == "int" || item.type == "const int") {
+            return 4;
+        }
+        if (item.type == "char" || item.type == "unsigned char") {
+            return 1;
+        }
+
+        return std::nullopt;
+    }
+
+    template <typename TItem>
+    std::optional<SMemoryByteHighlight> buildMemoryByteHighlightFromItems(const std::vector<TItem>& items, std::size_t selected_index,
+                                                                          const SMemoryReadRequest& memory_read_request, bool use_synthetic_rows) {
+        if (items.empty()) {
+            return std::nullopt;
+        }
+
+        const auto& selected_item = items[std::min(selected_index, items.size() - 1)];
+
+        if (use_synthetic_rows) {
+            const auto parsed_bytes = parseQuotedBytes(selected_item.value);
+            if (!parsed_bytes.has_value()) {
+                return std::nullopt;
+            }
+
+            return SMemoryByteHighlight{
+                .start_address = 0,
+                .start_offset  = 0,
+                .byte_count    = parsed_bytes->size(),
+                .row_stride    = memory_read_request.bytes_per_row,
+                .synthetic     = true,
+            };
+        }
+
+        const auto scalar_byte_count = inferScalarByteCount(selected_item);
+        if (scalar_byte_count.has_value()) {
+            return SMemoryByteHighlight{
+                .start_address = memory_read_request.start_address,
+                .start_offset  = 0,
+                .byte_count    = scalar_byte_count.value(),
+                .row_stride    = memory_read_request.bytes_per_row,
+                .synthetic     = false,
+            };
+        }
+
+        const auto parsed_bytes = parseQuotedBytes(selected_item.value);
+        if (parsed_bytes.has_value()) {
+            return SMemoryByteHighlight{
+                .start_address = memory_read_request.start_address,
+                .start_offset  = 0,
+                .byte_count    = parsed_bytes->size(),
+                .row_stride    = memory_read_request.bytes_per_row,
+                .synthetic     = false,
+            };
+        }
+
+        return std::nullopt;
+    }
+
 } // namespace
 
 std::optional<std::uint64_t> findFirstHexAddress(const std::string& text) {
@@ -234,4 +295,14 @@ std::optional<std::vector<std::string>> buildSyntheticMemoryRows(const std::vect
 
 std::optional<std::vector<std::string>> buildSyntheticMemoryRows(const std::vector<SWatchResult>& watch_results, std::size_t selected_watch_index, std::size_t bytes_per_row) {
     return buildSyntheticMemoryRowsFromItems(watch_results, selected_watch_index, bytes_per_row);
+}
+
+std::optional<SMemoryByteHighlight> buildMemoryByteHighlight(const std::vector<SLocalVariable>& locals, std::size_t selected_local_index,
+                                                             const SMemoryReadRequest& memory_read_request, bool use_synthetic_rows) {
+    return buildMemoryByteHighlightFromItems(locals, selected_local_index, memory_read_request, use_synthetic_rows);
+}
+
+std::optional<SMemoryByteHighlight> buildMemoryByteHighlight(const std::vector<SWatchResult>& watch_results, std::size_t selected_watch_index,
+                                                             const SMemoryReadRequest& memory_read_request, bool use_synthetic_rows) {
+    return buildMemoryByteHighlightFromItems(watch_results, selected_watch_index, memory_read_request, use_synthetic_rows);
 }

@@ -251,6 +251,57 @@ TEST_CASE("buildSyntheticMemoryRows returns no rows for non-array locals") {
     CHECK_FALSE(buildSyntheticMemoryRows(locals, 0).has_value());
 }
 
+TEST_CASE("buildMemoryByteHighlight uses integer width for selected int local") {
+    const std::vector<SLocalVariable> locals = {
+        {
+            .name                = "a",
+            .value               = "42",
+            .type                = "int",
+            .memory_reference    = "0x2000",
+            .variables_reference = 0,
+        },
+    };
+
+    const auto highlight = buildMemoryByteHighlight(locals, 0,
+                                                    {
+                                                        .start_address    = 0x2000,
+                                                        .memory_reference = "0x2000",
+                                                        .byte_count       = 40,
+                                                        .bytes_per_row    = 8,
+                                                    },
+                                                    false);
+
+    REQUIRE(highlight.has_value());
+    CHECK_FALSE(highlight->synthetic);
+    CHECK(highlight->start_address == 0x2000);
+    CHECK(highlight->byte_count == 4);
+}
+
+TEST_CASE("buildMemoryByteHighlight uses parsed byte count for synthetic array rows") {
+    const std::vector<SWatchResult> watch_results = {
+        {
+            .expression       = "sample_bytes",
+            .value            = R"({_M_elems:"Hello!\0A"})",
+            .type             = "volatile std::array<unsigned char, 8>",
+            .memory_reference = "",
+            .error_message    = "",
+        },
+    };
+
+    const auto highlight = buildMemoryByteHighlight(watch_results, 0,
+                                                    {
+                                                        .start_address    = 0x0,
+                                                        .memory_reference = "",
+                                                        .byte_count       = 8,
+                                                        .bytes_per_row    = 8,
+                                                    },
+                                                    true);
+
+    REQUIRE(highlight.has_value());
+    CHECK(highlight->synthetic);
+    CHECK(highlight->byte_count == 8);
+}
+
 TEST_CASE("buildMemoryReadRequest uses watch memory reference when available") {
     const std::vector<SWatchResult> watch_results = {
         {

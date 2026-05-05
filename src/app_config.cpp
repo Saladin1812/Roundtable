@@ -121,6 +121,22 @@ namespace {
             overrides.selected_memory_hex = parsed_color;
         } else if (key == "selected_memory_ascii") {
             overrides.selected_memory_ascii = parsed_color;
+        } else if (key == "memory_highlight_hex") {
+            overrides.memory_highlight_hex = parsed_color;
+        } else if (key == "memory_highlight_hex_background") {
+            overrides.memory_highlight_hex_background = parsed_color;
+        } else if (key == "memory_highlight_ascii") {
+            overrides.memory_highlight_ascii = parsed_color;
+        } else if (key == "memory_highlight_ascii_background") {
+            overrides.memory_highlight_ascii_background = parsed_color;
+        } else if (key == "selected_memory_highlight_hex") {
+            overrides.selected_memory_highlight_hex = parsed_color;
+        } else if (key == "selected_memory_highlight_hex_background") {
+            overrides.selected_memory_highlight_hex_background = parsed_color;
+        } else if (key == "selected_memory_highlight_ascii") {
+            overrides.selected_memory_highlight_ascii = parsed_color;
+        } else if (key == "selected_memory_highlight_ascii_background") {
+            overrides.selected_memory_highlight_ascii_background = parsed_color;
         } else if (key == "hint_key") {
             overrides.hint_key = parsed_color;
         } else if (key == "hint_description") {
