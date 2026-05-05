@@ -253,11 +253,11 @@ namespace {
         }
 
         if (highlight.synthetic) {
-            const std::size_t absolute_offset = row_index * highlight.row_stride + byte_index;
+            const std::size_t absolute_offset = (row_index * highlight.row_stride) + byte_index;
             return absolute_offset >= highlight.start_offset && absolute_offset < highlight.start_offset + highlight.byte_count;
         }
 
-        const std::uint64_t absolute_address = highlight.start_address + static_cast<std::uint64_t>(row_index * highlight.row_stride + byte_index);
+        const std::uint64_t absolute_address = highlight.start_address + static_cast<std::uint64_t>((row_index * highlight.row_stride) + byte_index);
         return absolute_address >= highlight.start_address && absolute_address < highlight.start_address + highlight.byte_count;
     }
 
@@ -274,44 +274,51 @@ namespace {
         }
 
         const auto& [address, hex_bytes, ascii] = memory_parts.value();
-        const auto  byte_tokens                  = splitMemoryByteTokens(hex_bytes);
+        const auto byte_tokens                  = splitMemoryByteTokens(hex_bytes);
 
-        Elements hex_elements;
-        Elements ascii_elements;
+        Elements   hex_elements;
+        Elements   ascii_elements;
         hex_elements.reserve(byte_tokens.size() * 2);
         ascii_elements.reserve(ascii.size());
 
-        const auto default_hex_color   = is_selected ? theme.selected_memory_hex : theme.memory_hex;
-        const auto default_ascii_color = is_selected ? theme.selected_memory_ascii : theme.memory_ascii;
-        const auto row_background      = theme.selected_background;
+        const auto default_hex_color          = is_selected ? theme.selected_memory_hex : theme.memory_hex;
+        const auto default_ascii_color        = is_selected ? theme.selected_memory_ascii : theme.memory_ascii;
+        const auto row_background             = theme.selected_background;
+        const auto highlight_hex_background   = theme.memory_highlight_hex_background;
+        const auto highlight_ascii_background = theme.memory_highlight_ascii_background;
 
         for (std::size_t byte_index = 0; byte_index < byte_tokens.size(); ++byte_index) {
             const bool highlighted = memory_context.highlight.has_value() && isHighlightedMemoryByte(memory_context.highlight.value(), row_index, byte_index);
 
-            auto hex_element = text(byte_tokens[byte_index]) |
-                color(highlighted ? (is_selected ? theme.selected_memory_highlight_hex : theme.memory_highlight_hex) : default_hex_color);
+            auto       hex_element =
+                text(byte_tokens[byte_index]) | color(highlighted ? (is_selected ? theme.selected_memory_highlight_hex : theme.memory_highlight_hex) : default_hex_color);
             auto ascii_element = text(byte_index < ascii.size() ? std::string(1, ascii[byte_index]) : "") |
                 color(highlighted ? (is_selected ? theme.selected_memory_highlight_ascii : theme.memory_highlight_ascii) : default_ascii_color);
 
-            if (is_selected) {
-                hex_element   = hex_element | bgcolor(row_background);
+            if (is_selected && !highlighted) {
+                hex_element = hex_element | bgcolor(row_background);
+            }
+            if (is_selected && !highlighted) {
                 ascii_element = ascii_element | bgcolor(row_background);
             }
 
             if (highlighted) {
-                hex_element = hex_element | bgcolor(is_selected ? theme.selected_memory_highlight_hex_background : theme.memory_highlight_hex_background);
-                ascii_element = ascii_element | bgcolor(is_selected ? theme.selected_memory_highlight_ascii_background : theme.memory_highlight_ascii_background);
+                hex_element   = hex_element | bgcolor(highlight_hex_background);
+                ascii_element = ascii_element | bgcolor(highlight_ascii_background);
             }
 
             hex_elements.push_back(hex_element);
             if (byte_index + 1 < byte_tokens.size()) {
-                auto separator = text(" ") | color(default_hex_color);
-                if (is_selected) {
+                auto       separator        = text(" ") | color(default_hex_color);
+                const bool next_highlighted = memory_context.highlight.has_value() && isHighlightedMemoryByte(memory_context.highlight.value(), row_index, byte_index + 1);
+                if (is_selected && !(highlighted && next_highlighted)) {
                     separator = separator | bgcolor(row_background);
+                }
+                if (highlighted && next_highlighted) {
+                    separator = separator | bgcolor(highlight_hex_background);
                 }
                 hex_elements.push_back(separator);
             }
-
             ascii_elements.push_back(ascii_element);
         }
 
@@ -732,8 +739,7 @@ namespace {
                     .byte_count       = 40,
                     .bytes_per_row    = 8,
                 };
-                const auto memory_read_result = debug_session.readMemory(debug_selection,
-                                                                         memory_read_request);
+                const auto memory_read_result = debug_session.readMemory(debug_selection, memory_read_request);
                 memory_view_pane.rows         = generateMemoryViewRows(memory_read_result);
             } else {
                 const std::vector<SWatchResult> memory_target_results = debug_session.evaluateWatches(debug_selection, {{.expression = manual_memory_target}});
@@ -754,8 +760,8 @@ namespace {
                 }
             }
         } else if (focused_pane == eFocusPane::WATCH_LIST && !watch_results.empty()) {
-            const auto selected_watch_index = std::min(watch_list_pane.selected_index, watch_results.size() - 1);
-            memory_target_label             = compactMemoryTargetLabel("W", watch_results[selected_watch_index].expression);
+            const auto selected_watch_index  = std::min(watch_list_pane.selected_index, watch_results.size() - 1);
+            memory_target_label              = compactMemoryTargetLabel("W", watch_results[selected_watch_index].expression);
             const auto memory_read_request   = buildMemoryReadRequest(watch_results, watch_list_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
             const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
             const auto synthetic_memory_rows = buildSyntheticMemoryRows(watch_results, watch_list_pane.selected_index, memory_read_request.bytes_per_row);
@@ -868,7 +874,7 @@ int main() {
     std::string          memory_target_label = {};
     SMemoryRenderContext memory_context      = {};
 
-    const auto reloadConfig = [&] {
+    const auto           reloadConfig = [&] {
         app_config                            = loadAppConfig("roundtable.toml");
         keybindings                           = app_config.keybindings;
         active_theme_preset                   = app_config.theme_preset;
@@ -878,9 +884,9 @@ int main() {
         focused_pane                          = normalizeFocusedPane(focused_pane, view_visibility);
 
         theme_picker_state = {
-            .active          = false,
-            .original_preset = active_theme_preset,
-            .selected_index  = themePresetIndex(active_theme_preset),
+                      .active          = false,
+                      .original_preset = active_theme_preset,
+                      .selected_index  = themePresetIndex(active_theme_preset),
         };
 
         bootstrap_result             = bootstrapSession(app_config);
@@ -892,7 +898,7 @@ int main() {
         transient_status_message     = "Config reloaded";
 
         refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
-                        focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                                  focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
     };
 
     refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
