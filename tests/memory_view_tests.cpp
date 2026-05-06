@@ -366,6 +366,32 @@ TEST_CASE("buildContextualMemoryReadRequest keeps non-address memory references 
     CHECK(contextual_request.memory_reference == "stack:frame:0");
 }
 
+TEST_CASE("buildContextualMemoryReadRequest applies navigation offset after adding context") {
+    const SMemoryReadRequest contextual_request = buildContextualMemoryReadRequest(
+        {
+            .start_address    = 0x2000,
+            .memory_reference = "",
+            .byte_count       = 40,
+            .bytes_per_row    = 8,
+        },
+        2, 16);
+
+    CHECK(contextual_request.start_address == 0x2000);
+}
+
+TEST_CASE("buildContextualMemoryReadRequest clamps negative navigation at zero") {
+    const SMemoryReadRequest contextual_request = buildContextualMemoryReadRequest(
+        {
+            .start_address    = 0x8,
+            .memory_reference = "",
+            .byte_count       = 40,
+            .bytes_per_row    = 8,
+        },
+        2, -32);
+
+    CHECK(contextual_request.start_address == 0x0);
+}
+
 TEST_CASE("buildMemoryReadRequest uses watch memory reference when available") {
     const std::vector<SWatchResult> watch_results = {
         {

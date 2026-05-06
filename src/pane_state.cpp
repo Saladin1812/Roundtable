@@ -182,3 +182,30 @@ std::vector<SKeybinding> defaultKeybindings() {
         {.keys = "Space ?", .command = eCommand::TOGGLE_SHORTCUTS_HELP},
     };
 }
+
+std::optional<std::int64_t> memoryNavigationDelta(ftxui::Event event, std::size_t bytes_per_row, std::size_t visible_row_count) {
+    if (bytes_per_row == 0) {
+        return std::nullopt;
+    }
+
+    const auto row_delta  = static_cast<std::int64_t>(bytes_per_row);
+    const auto page_delta = static_cast<std::int64_t>(bytes_per_row * std::max<std::size_t>(visible_row_count, 1));
+
+    if (event == ftxui::Event::ArrowLeft || event == ftxui::Event::Character('h')) {
+        return -row_delta;
+    }
+
+    if (event == ftxui::Event::ArrowRight || event == ftxui::Event::Character('l')) {
+        return row_delta;
+    }
+
+    if (event == ftxui::Event::PageUp) {
+        return -page_delta;
+    }
+
+    if (event == ftxui::Event::PageDown) {
+        return page_delta;
+    }
+
+    return std::nullopt;
+}

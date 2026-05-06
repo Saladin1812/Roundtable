@@ -723,6 +723,7 @@ int main() {
     std::string                    disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
     std::string                    base_session_status          = bootstrap_result.status_message;
     std::string                    transient_status_message     = {};
+    std::int64_t                   memory_navigation_offset     = 0;
     auto                           screen                       = ScreenInteractive::Fullscreen();
     SViewVisibilityState           view_visibility              = {
                                .show_memory_view      = app_config.show_memory_view,
@@ -774,6 +775,7 @@ int main() {
                       .debug_selection              = debug_selection,
                       .disassembly_start_address    = disassembly_start_address,
                       .disassembly_memory_reference = disassembly_memory_reference,
+                      .memory_navigation_offset     = memory_navigation_offset,
                       .focused_pane                 = focused_pane,
                       .watch_expressions            = watch_expressions,
                       .manual_memory_target         = manual_memory_target,
@@ -811,6 +813,7 @@ int main() {
         disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
         base_session_status          = bootstrap_result.status_message;
         transient_status_message     = "Config reloaded";
+        memory_navigation_offset     = 0;
 
         refreshAllPanes();
     };
@@ -892,16 +895,19 @@ int main() {
                 if (prompt_state.mode == ePromptMode::ADD_WATCH) {
                     if (!prompt_state.input.empty()) {
                         watch_expressions.push_back({.expression = prompt_state.input});
-                        focused_pane = eFocusPane::WATCH_LIST;
+                        focused_pane             = eFocusPane::WATCH_LIST;
+                        memory_navigation_offset = 0;
                     }
                 } else if (prompt_state.mode == ePromptMode::EDIT_WATCH) {
                     if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size() && !prompt_state.input.empty()) {
                         watch_expressions[watch_list_pane.selected_index].expression = prompt_state.input;
                         focused_pane                                                 = eFocusPane::WATCH_LIST;
+                        memory_navigation_offset                                     = 0;
                     }
                 } else if (prompt_state.mode == ePromptMode::MEMORY_TARGET) {
-                    manual_memory_target = prompt_state.input;
-                    focused_pane         = eFocusPane::MEMORY_VIEW;
+                    manual_memory_target     = prompt_state.input;
+                    focused_pane             = eFocusPane::MEMORY_VIEW;
+                    memory_navigation_offset = 0;
                 }
 
                 prompt_state = {};
@@ -1029,6 +1035,7 @@ int main() {
                         if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
                             --watch_list_pane.selected_index;
                         }
+                        memory_navigation_offset = 0;
                         refreshAllPanes();
                     }
                 }
@@ -1110,7 +1117,8 @@ int main() {
                             if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
                                 --watch_list_pane.selected_index;
                             }
-                            focused_pane = eFocusPane::WATCH_LIST;
+                            focused_pane             = eFocusPane::WATCH_LIST;
+                            memory_navigation_offset = 0;
                             refreshAllPanes();
                         }
                         return true;
@@ -1155,6 +1163,7 @@ int main() {
         if (focused_pane == eFocusPane::LOCALS) {
             const bool handled = handleVerticalNavigation(event, locals_pane);
             if (handled) {
+                memory_navigation_offset = 0;
                 refreshAllPanes();
             }
             return handled;
@@ -1162,11 +1171,17 @@ int main() {
         if (focused_pane == eFocusPane::WATCH_LIST) {
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
+                memory_navigation_offset = 0;
                 refreshAllPanes();
             }
             return handled;
         }
         if (focused_pane == eFocusPane::MEMORY_VIEW) {
+            if (const auto navigation_delta = memoryNavigationDelta(event, 8, memory_view_pane.rows.size()); navigation_delta.has_value()) {
+                memory_navigation_offset += navigation_delta.value();
+                refreshAllPanes();
+                return true;
+            }
             return handleVerticalNavigation(event, memory_view_pane);
         }
         if (focused_pane == eFocusPane::DISASSEMBLY_VIEW) {

@@ -18,7 +18,8 @@ struct SPaneRefreshInputs {
     const SDebugSelection&               debug_selection;
     std::uint64_t                        disassembly_start_address = 0x401000;
     const std::string&                   disassembly_memory_reference;
-    eFocusPane                           focused_pane = eFocusPane::MEMORY_VIEW;
+    std::int64_t                         memory_navigation_offset = 0;
+    eFocusPane                           focused_pane             = eFocusPane::MEMORY_VIEW;
     const std::vector<SWatchExpression>& watch_expressions;
     const std::string&                   manual_memory_target;
 };

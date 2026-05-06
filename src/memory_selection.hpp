@@ -29,4 +29,4 @@ std::optional<SMemoryByteHighlight>     buildMemoryByteHighlight(const std::vect
                                                                  const SMemoryReadRequest& memory_read_request, bool use_synthetic_rows);
 std::optional<SMemoryByteHighlight>     buildMemoryByteHighlight(const std::vector<SWatchResult>& watch_results, std::size_t selected_watch_index,
                                                                  const SMemoryReadRequest& memory_read_request, bool use_synthetic_rows);
-SMemoryReadRequest                      buildContextualMemoryReadRequest(const SMemoryReadRequest& memory_read_request, std::size_t context_rows_before = 2);
+SMemoryReadRequest buildContextualMemoryReadRequest(const SMemoryReadRequest& memory_read_request, std::size_t context_rows_before = 2, std::int64_t navigation_byte_offset = 0);

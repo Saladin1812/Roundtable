@@ -47,11 +47,12 @@ struct SKeybinding {
     eCommand    command = eCommand::FOCUS_MEMORY;
 };
 
-bool                     handleVerticalNavigation(ftxui::Event event, SSelectablePaneState& pane);
-eFocusPane               advanceFocusPane(eFocusPane focused_pane, const SViewVisibilityState& view_visibility);
-eFocusPane               normalizeFocusedPane(eFocusPane focused_pane, const SViewVisibilityState& view_visibility);
-bool                     isPaneVisible(eFocusPane focused_pane, const SViewVisibilityState& view_visibility);
-void                     executeCommand(eCommand command, eFocusPane& focused_pane, SViewVisibilityState& view_visibility);
-std::optional<eCommand>  parseCommandName(const std::string& command_name);
-std::string              commandDescription(eCommand command);
-std::vector<SKeybinding> defaultKeybindings();
+bool                        handleVerticalNavigation(ftxui::Event event, SSelectablePaneState& pane);
+eFocusPane                  advanceFocusPane(eFocusPane focused_pane, const SViewVisibilityState& view_visibility);
+eFocusPane                  normalizeFocusedPane(eFocusPane focused_pane, const SViewVisibilityState& view_visibility);
+bool                        isPaneVisible(eFocusPane focused_pane, const SViewVisibilityState& view_visibility);
+void                        executeCommand(eCommand command, eFocusPane& focused_pane, SViewVisibilityState& view_visibility);
+std::optional<eCommand>     parseCommandName(const std::string& command_name);
+std::string                 commandDescription(eCommand command);
+std::vector<SKeybinding>    defaultKeybindings();
+std::optional<std::int64_t> memoryNavigationDelta(ftxui::Event event, std::size_t bytes_per_row, std::size_t visible_row_count);

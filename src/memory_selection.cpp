@@ -328,7 +328,7 @@ std::optional<SMemoryByteHighlight> buildMemoryByteHighlight(const std::vector<S
     return buildMemoryByteHighlightFromItems(watch_results, selected_watch_index, memory_read_request, use_synthetic_rows);
 }
 
-SMemoryReadRequest buildContextualMemoryReadRequest(const SMemoryReadRequest& memory_read_request, std::size_t context_rows_before) {
+SMemoryReadRequest buildContextualMemoryReadRequest(const SMemoryReadRequest& memory_read_request, std::size_t context_rows_before, std::int64_t navigation_byte_offset) {
     if (memory_read_request.bytes_per_row == 0) {
         return memory_read_request;
     }
@@ -336,6 +336,14 @@ SMemoryReadRequest buildContextualMemoryReadRequest(const SMemoryReadRequest& me
     const std::size_t   context_bytes    = context_rows_before * memory_read_request.bytes_per_row;
     const std::uint64_t clamped_context  = std::min<std::uint64_t>(memory_read_request.start_address, context_bytes);
     std::uint64_t       contextual_start = memory_read_request.start_address - clamped_context;
+
+    if (navigation_byte_offset < 0) {
+        const auto backwards_offset = static_cast<std::uint64_t>(-navigation_byte_offset);
+        contextual_start            = backwards_offset > contextual_start ? 0 : contextual_start - backwards_offset;
+    } else {
+        contextual_start += static_cast<std::uint64_t>(navigation_byte_offset);
+    }
+
     contextual_start -= contextual_start % memory_read_request.bytes_per_row;
 
     SMemoryReadRequest contextual_request = memory_read_request;

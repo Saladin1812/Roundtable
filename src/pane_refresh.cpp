@@ -19,8 +19,9 @@ namespace {
         return std::move(source) + ":" + value;
     }
 
-    SMemoryReadResult readContextualMemory(IDebugSession& debug_session, const SDebugSelection& debug_selection, const SMemoryReadRequest& memory_read_request) {
-        return debug_session.readMemory(debug_selection, buildContextualMemoryReadRequest(memory_read_request));
+    SMemoryReadResult readContextualMemory(IDebugSession& debug_session, const SDebugSelection& debug_selection, const SMemoryReadRequest& memory_read_request,
+                                           std::int64_t memory_navigation_offset) {
+        return debug_session.readMemory(debug_selection, buildContextualMemoryReadRequest(memory_read_request, 2, memory_navigation_offset));
     }
 
 } // namespace
@@ -42,7 +43,7 @@ void refreshPaneRows(const SPaneRefreshInputs& inputs, SPaneRefreshOutputs& outp
                 .byte_count       = 40,
                 .bytes_per_row    = 8,
             };
-            const auto memory_read_result = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request);
+            const auto memory_read_result = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request, inputs.memory_navigation_offset);
             outputs.memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
         } else {
             const std::vector<SWatchResult> memory_target_results = inputs.debug_session.evaluateWatches(inputs.debug_selection, {{.expression = inputs.manual_memory_target}});
@@ -51,7 +52,7 @@ void refreshPaneRows(const SPaneRefreshInputs& inputs, SPaneRefreshOutputs& outp
             const bool using_synthetic_rows  = synthetic_memory_rows.has_value();
             const bool target_has_explicit_memory_reference = !memory_target_results.empty() && !memory_target_results.front().memory_reference.empty() &&
                 findFirstHexAddress(memory_target_results.front().memory_reference).has_value();
-            const auto memory_read_result = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request);
+            const auto memory_read_result = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request, inputs.memory_navigation_offset);
             outputs.memory_context.highlight =
                 buildMemoryByteHighlight(memory_target_results, 0, memory_read_request, using_synthetic_rows && !target_has_explicit_memory_reference);
 
@@ -72,7 +73,7 @@ void refreshPaneRows(const SPaneRefreshInputs& inputs, SPaneRefreshOutputs& outp
         const bool using_synthetic_rows  = synthetic_memory_rows.has_value();
         const bool selected_watch_has_explicit_memory_reference =
             !watch_results[selected_watch_index].memory_reference.empty() && findFirstHexAddress(watch_results[selected_watch_index].memory_reference).has_value();
-        const auto memory_read_result    = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request);
+        const auto memory_read_result    = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request, inputs.memory_navigation_offset);
         outputs.memory_context.highlight = buildMemoryByteHighlight(watch_results, outputs.watch_list_pane.selected_index, memory_read_request,
                                                                     using_synthetic_rows && !selected_watch_has_explicit_memory_reference);
 
@@ -95,7 +96,7 @@ void refreshPaneRows(const SPaneRefreshInputs& inputs, SPaneRefreshOutputs& outp
         const auto selected_local_index  = locals.empty() ? 0UL : std::min(outputs.locals_pane.selected_index, locals.size() - 1);
         const bool selected_local_has_explicit_memory_reference =
             !locals.empty() && !locals[selected_local_index].memory_reference.empty() && findFirstHexAddress(locals[selected_local_index].memory_reference).has_value();
-        const auto memory_read_result = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request);
+        const auto memory_read_result = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request, inputs.memory_navigation_offset);
         outputs.memory_context.highlight =
             buildMemoryByteHighlight(locals, outputs.locals_pane.selected_index, memory_read_request, using_synthetic_rows && !selected_local_has_explicit_memory_reference);
 

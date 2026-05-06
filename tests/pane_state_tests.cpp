@@ -102,3 +102,19 @@ TEST_CASE("handleVerticalNavigation ignores unrelated input") {
     CHECK_FALSE(handleVerticalNavigation(ftxui::Event::Tab, pane));
     CHECK(pane.selected_index == 0);
 }
+
+TEST_CASE("memoryNavigationDelta returns row and page movement for memory view") {
+    REQUIRE(memoryNavigationDelta(ftxui::Event::ArrowLeft, 8, 5).has_value());
+    CHECK(memoryNavigationDelta(ftxui::Event::ArrowLeft, 8, 5).value() == -8);
+
+    REQUIRE(memoryNavigationDelta(ftxui::Event::Character('l'), 8, 5).has_value());
+    CHECK(memoryNavigationDelta(ftxui::Event::Character('l'), 8, 5).value() == 8);
+
+    REQUIRE(memoryNavigationDelta(ftxui::Event::PageUp, 8, 5).has_value());
+    CHECK(memoryNavigationDelta(ftxui::Event::PageUp, 8, 5).value() == -40);
+
+    REQUIRE(memoryNavigationDelta(ftxui::Event::PageDown, 8, 5).has_value());
+    CHECK(memoryNavigationDelta(ftxui::Event::PageDown, 8, 5).value() == 40);
+
+    CHECK_FALSE(memoryNavigationDelta(ftxui::Event::Tab, 8, 5).has_value());
+}
