@@ -57,6 +57,17 @@ namespace {
         return fallback;
     }
 
+    std::int64_t parseInt64(const std::string& value, std::int64_t fallback) {
+        std::int64_t parsed_value = 0;
+        const auto   trimmed      = trim(value);
+        const auto   result       = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), parsed_value, 10);
+        if (result.ec != std::errc{} || result.ptr != trimmed.data() + trimmed.size()) {
+            return fallback;
+        }
+
+        return parsed_value;
+    }
+
     std::optional<ftxui::Color> parseHexColor(std::string value) {
         value = unquote(trim(std::move(value)));
         if (value.size() != 7 || value.front() != '#') {
@@ -83,6 +94,45 @@ namespace {
         }
 
         return ftxui::Color::RGB(red.value(), green.value(), blue.value());
+    }
+
+    std::vector<std::string> parseStringArray(std::string value) {
+        value = trim(std::move(value));
+        if (value.size() < 2 || value.front() != '[' || value.back() != ']') {
+            return {};
+        }
+
+        std::vector<std::string> items;
+        std::string              current_item;
+        bool                     inside_quotes = false;
+
+        for (std::size_t index = 1; index + 1 < value.size(); ++index) {
+            const char character = value[index];
+
+            if (character == '"') {
+                inside_quotes = !inside_quotes;
+                current_item.push_back(character);
+                continue;
+            }
+
+            if (character == ',' && !inside_quotes) {
+                const auto parsed_item = unquote(trim(current_item));
+                if (!parsed_item.empty()) {
+                    items.push_back(parsed_item);
+                }
+                current_item.clear();
+                continue;
+            }
+
+            current_item.push_back(character);
+        }
+
+        const auto parsed_item = unquote(trim(current_item));
+        if (!parsed_item.empty()) {
+            items.push_back(parsed_item);
+        }
+
+        return items;
     }
 
     void assignThemeOverride(SThemeOverrides& overrides, const std::string& key, const std::string& value) {
@@ -156,6 +206,9 @@ namespace {
         }
         if (value == "dap_launch") {
             return eSessionMode::DAP_LAUNCH;
+        }
+        if (value == "dap_attach") {
+            return eSessionMode::DAP_ATTACH;
         }
 
         return fallback;
@@ -248,6 +301,33 @@ SAppConfig loadAppConfig(const std::string& config_path) {
                 config.dap_launch.stop_on_entry = parseBool(value, config.dap_launch.stop_on_entry);
             } else if (key == "continue_once") {
                 config.dap_launch.continue_once = parseBool(value, config.dap_launch.continue_once);
+            }
+            continue;
+        }
+
+        if (current_section == "dap_attach") {
+            if (key == "command") {
+                config.dap_attach.command = unquote(value);
+            } else if (key == "liblldb_path") {
+                config.dap_attach.liblldb_path = unquote(value);
+            } else if (key == "pid") {
+                config.dap_attach.process_id = parseInt64(value, config.dap_attach.process_id);
+            } else if (key == "stop_on_entry") {
+                config.dap_attach.stop_on_entry = parseBool(value, config.dap_attach.stop_on_entry);
+            } else if (key == "continue_once") {
+                config.dap_attach.continue_once = parseBool(value, config.dap_attach.continue_once);
+            }
+            continue;
+        }
+
+        if (current_section == "codelldb.auto_detect") {
+            if (key == "enabled") {
+                config.codelldb_auto_detect.enabled = parseBool(value, config.codelldb_auto_detect.enabled);
+            } else if (key == "candidate_roots") {
+                config.codelldb_auto_detect.candidate_roots.clear();
+                for (const auto& item : parseStringArray(value)) {
+                    config.codelldb_auto_detect.candidate_roots.emplace_back(item);
+                }
             }
             continue;
         }
