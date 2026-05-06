@@ -24,29 +24,29 @@ struct SDapLaunchConfig {
 };
 
 struct SDapAttachConfig {
-    std::string command;
-    std::string liblldb_path;
+    std::string  command;
+    std::string  liblldb_path;
     std::int64_t process_id    = 0;
     bool         stop_on_entry = true;
     bool         continue_once = false;
 };
 
 struct SCodeLldbAutoDetectConfig {
-    bool                                enabled = true;
-    std::vector<std::filesystem::path>  candidate_roots;
+    bool                               enabled = true;
+    std::vector<std::filesystem::path> candidate_roots;
 };
 
 struct SAppConfig {
-    eSessionMode             session_mode          = eSessionMode::MOCK;
-    eFocusPane               startup_focus         = eFocusPane::MEMORY_VIEW;
-    bool                     show_memory_view      = true;
-    bool                     show_disassembly_view = false;
-    eThemePreset             theme_preset          = eThemePreset::DEFAULT;
-    SThemeOverrides          theme_overrides       = {};
-    SDapLaunchConfig         dap_launch            = {};
-    SDapAttachConfig         dap_attach            = {};
-    SCodeLldbAutoDetectConfig codelldb_auto_detect = {};
-    std::vector<SKeybinding> keybindings           = defaultKeybindings();
+    eSessionMode              session_mode          = eSessionMode::MOCK;
+    eFocusPane                startup_focus         = eFocusPane::MEMORY_VIEW;
+    bool                      show_memory_view      = true;
+    bool                      show_disassembly_view = false;
+    eThemePreset              theme_preset          = eThemePreset::DEFAULT;
+    SThemeOverrides           theme_overrides       = {};
+    SDapLaunchConfig          dap_launch            = {};
+    SDapAttachConfig          dap_attach            = {};
+    SCodeLldbAutoDetectConfig codelldb_auto_detect  = {};
+    std::vector<SKeybinding>  keybindings           = defaultKeybindings();
 };
 
 SAppConfig loadAppConfig(const std::string& config_path);

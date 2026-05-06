@@ -646,20 +646,20 @@ namespace {
             };
         }
 
-        const bool is_launch_mode = app_config.session_mode == eSessionMode::DAP_LAUNCH;
-        const auto detected_install = app_config.codelldb_auto_detect.enabled ? findCodeLldbInstall(app_config.codelldb_auto_detect.candidate_roots) : std::nullopt;
-        const auto resolved_command =
-            is_launch_mode ? (app_config.dap_launch.command.empty() && detected_install.has_value() ? detected_install->command : app_config.dap_launch.command)
-                           : (app_config.dap_attach.command.empty() && detected_install.has_value() ? detected_install->command : app_config.dap_attach.command);
-        const auto resolved_liblldb_path =
-            is_launch_mode ? (app_config.dap_launch.liblldb_path.empty() && detected_install.has_value() ? detected_install->liblldb_path : app_config.dap_launch.liblldb_path)
-                           : (app_config.dap_attach.liblldb_path.empty() && detected_install.has_value() ? detected_install->liblldb_path : app_config.dap_attach.liblldb_path);
-        auto dap_session = std::make_unique<CDapDebugSession>(std::make_unique<CTcpDapTransport>(),
-                                                              SDapEndpointConfig{
-                                                                  .transport_kind = eDapTransportKind::TCP,
-                                                                  .command        = resolved_command,
-                                                                  .arguments      = {"--liblldb", resolved_liblldb_path},
-                                                                  .auth_token     = "",
+        const bool is_launch_mode        = app_config.session_mode == eSessionMode::DAP_LAUNCH;
+        const auto detected_install      = app_config.codelldb_auto_detect.enabled ? findCodeLldbInstall(app_config.codelldb_auto_detect.candidate_roots) : std::nullopt;
+        const auto resolved_command      = is_launch_mode ?
+                 (app_config.dap_launch.command.empty() && detected_install.has_value() ? detected_install->command : app_config.dap_launch.command) :
+                 (app_config.dap_attach.command.empty() && detected_install.has_value() ? detected_install->command : app_config.dap_attach.command);
+        const auto resolved_liblldb_path = is_launch_mode ?
+            (app_config.dap_launch.liblldb_path.empty() && detected_install.has_value() ? detected_install->liblldb_path : app_config.dap_launch.liblldb_path) :
+            (app_config.dap_attach.liblldb_path.empty() && detected_install.has_value() ? detected_install->liblldb_path : app_config.dap_attach.liblldb_path);
+        auto       dap_session           = std::make_unique<CDapDebugSession>(std::make_unique<CTcpDapTransport>(),
+                                                                              SDapEndpointConfig{
+                                                                                  .transport_kind = eDapTransportKind::TCP,
+                                                                                  .command        = resolved_command,
+                                                                                  .arguments      = {"--liblldb", resolved_liblldb_path},
+                                                                                  .auth_token     = "",
                                                               });
 
         if (is_launch_mode && (resolved_command.empty() || resolved_liblldb_path.empty() || app_config.dap_launch.program.empty())) {
@@ -693,7 +693,7 @@ namespace {
             };
         }
 
-        SDebugSelection selection = {};
+        SDebugSelection selection                 = {};
         std::uint64_t   disassembly_start_address = 0x401000;
         std::string     disassembly_memory_reference;
 
@@ -752,8 +752,8 @@ namespace {
             .selection                    = selection,
             .disassembly_start_address    = disassembly_start_address,
             .disassembly_memory_reference = disassembly_memory_reference,
-            .status_message               = selection.thread_id != 0 ? (is_launch_mode ? "DAP launch session" : "DAP attach session")
-                                                                    : (is_launch_mode ? "DAP launch session without active thread" : "DAP attach session without active thread"),
+            .status_message               = selection.thread_id != 0 ? (is_launch_mode ? "DAP launch session" : "DAP attach session") :
+                                                                       (is_launch_mode ? "DAP launch session without active thread" : "DAP attach session without active thread"),
         };
     }
 

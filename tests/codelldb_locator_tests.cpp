@@ -6,7 +6,7 @@
 #include "codelldb_locator.hpp"
 
 TEST_CASE("findCodeLldbInstall detects a valid install from additional roots") {
-    const auto base_path   = std::filesystem::temp_directory_path() / "roundtable-codelldb-locator-test";
+    const auto base_path    = std::filesystem::temp_directory_path() / "roundtable-codelldb-locator-test";
     const auto install_root = base_path / "extension";
     const auto adapter_path = install_root / "adapter" /
 #if defined(_WIN32)

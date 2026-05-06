@@ -34,8 +34,8 @@ namespace {
     }
 
     std::optional<SCodeLldbInstall> installFromRoot(const std::filesystem::path& root, const std::string& source) {
-        const auto command_path = root / adapterRelativePath();
-        const auto liblldb_path = root / liblldbRelativePath();
+        const auto      command_path = root / adapterRelativePath();
+        const auto      liblldb_path = root / liblldbRelativePath();
 
         std::error_code error_code;
         if (!std::filesystem::exists(command_path, error_code) || !std::filesystem::exists(liblldb_path, error_code)) {
@@ -43,9 +43,9 @@ namespace {
         }
 
         return SCodeLldbInstall{
-            .command     = command_path.string(),
+            .command      = command_path.string(),
             .liblldb_path = liblldb_path.string(),
-            .source      = source,
+            .source       = source,
         };
     }
 
