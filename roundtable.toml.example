@@ -43,13 +43,6 @@ working_directory = "."
 stop_on_entry = true
 continue_once = false
 
-[dap_attach]
-command = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/adapter/codelldb"
-liblldb_path = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/lldb/lib/liblldb.so"
-pid = 12345
-stop_on_entry = true
-continue_once = false
-
 [codelldb.auto_detect]
 enabled = true
 candidate_roots = [

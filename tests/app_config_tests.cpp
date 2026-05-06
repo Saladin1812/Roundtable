@@ -15,8 +15,6 @@ TEST_CASE("loadAppConfig returns defaults when config file is missing") {
     CHECK_FALSE(config.show_disassembly_view);
     CHECK(config.theme_preset == eThemePreset::DEFAULT);
     CHECK(config.dap_launch.command.empty());
-    CHECK(config.dap_attach.command.empty());
-    CHECK(config.dap_attach.process_id == 0);
     REQUIRE_FALSE(config.keybindings.empty());
 }
 
@@ -99,34 +97,6 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     const auto theme_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::CYCLE_THEME; });
     REQUIRE(theme_keybinding != config.keybindings.end());
     CHECK(theme_keybinding->keys == "Space C");
-
-    std::filesystem::remove(config_path);
-}
-
-TEST_CASE("loadAppConfig reads dap_attach configuration from TOML") {
-    const std::filesystem::path config_path = std::filesystem::temp_directory_path() / "roundtable-test-attach-config.toml";
-
-    {
-        std::ofstream config_stream(config_path);
-        config_stream << "[session]\n";
-        config_stream << "mode = \"dap_attach\"\n";
-        config_stream << "\n";
-        config_stream << "[dap_attach]\n";
-        config_stream << "command = \"/tmp/codelldb\"\n";
-        config_stream << "liblldb_path = \"/tmp/liblldb.so\"\n";
-        config_stream << "pid = 4242\n";
-        config_stream << "stop_on_entry = false\n";
-        config_stream << "continue_once = true\n";
-    }
-
-    const SAppConfig config = loadAppConfig(config_path.string());
-
-    CHECK(config.session_mode == eSessionMode::DAP_ATTACH);
-    CHECK(config.dap_attach.command == "/tmp/codelldb");
-    CHECK(config.dap_attach.liblldb_path == "/tmp/liblldb.so");
-    CHECK(config.dap_attach.process_id == 4242);
-    CHECK_FALSE(config.dap_attach.stop_on_entry);
-    CHECK(config.dap_attach.continue_once);
 
     std::filesystem::remove(config_path);
 }

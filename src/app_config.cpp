@@ -57,17 +57,6 @@ namespace {
         return fallback;
     }
 
-    std::int64_t parseInt64(const std::string& value, std::int64_t fallback) {
-        std::int64_t parsed_value = 0;
-        const auto   trimmed      = trim(value);
-        const auto   result       = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), parsed_value, 10);
-        if (result.ec != std::errc{} || result.ptr != trimmed.data() + trimmed.size()) {
-            return fallback;
-        }
-
-        return parsed_value;
-    }
-
     std::optional<ftxui::Color> parseHexColor(std::string value) {
         value = unquote(trim(std::move(value)));
         if (value.size() != 7 || value.front() != '#') {
@@ -207,10 +196,6 @@ namespace {
         if (value == "dap_launch") {
             return eSessionMode::DAP_LAUNCH;
         }
-        if (value == "dap_attach") {
-            return eSessionMode::DAP_ATTACH;
-        }
-
         return fallback;
     }
 
@@ -301,21 +286,6 @@ SAppConfig loadAppConfig(const std::string& config_path) {
                 config.dap_launch.stop_on_entry = parseBool(value, config.dap_launch.stop_on_entry);
             } else if (key == "continue_once") {
                 config.dap_launch.continue_once = parseBool(value, config.dap_launch.continue_once);
-            }
-            continue;
-        }
-
-        if (current_section == "dap_attach") {
-            if (key == "command") {
-                config.dap_attach.command = unquote(value);
-            } else if (key == "liblldb_path") {
-                config.dap_attach.liblldb_path = unquote(value);
-            } else if (key == "pid") {
-                config.dap_attach.process_id = parseInt64(value, config.dap_attach.process_id);
-            } else if (key == "stop_on_entry") {
-                config.dap_attach.stop_on_entry = parseBool(value, config.dap_attach.stop_on_entry);
-            } else if (key == "continue_once") {
-                config.dap_attach.continue_once = parseBool(value, config.dap_attach.continue_once);
             }
             continue;
         }
