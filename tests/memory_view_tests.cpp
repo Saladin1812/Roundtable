@@ -302,6 +302,44 @@ TEST_CASE("buildMemoryByteHighlight uses parsed byte count for synthetic array r
     CHECK(highlight->byte_count == 8);
 }
 
+TEST_CASE("buildContextualMemoryReadRequest shifts address backward by whole rows") {
+    const SMemoryReadRequest contextual_request = buildContextualMemoryReadRequest({
+        .start_address    = 0x2000,
+        .memory_reference = "",
+        .byte_count       = 40,
+        .bytes_per_row    = 8,
+    });
+
+    CHECK(contextual_request.start_address == 0x1FF0);
+    CHECK(contextual_request.byte_count == 40);
+    CHECK(contextual_request.bytes_per_row == 8);
+    CHECK(contextual_request.memory_reference.empty());
+}
+
+TEST_CASE("buildContextualMemoryReadRequest clears plain hex memory references when shifting window") {
+    const SMemoryReadRequest contextual_request = buildContextualMemoryReadRequest({
+        .start_address    = 0x2000,
+        .memory_reference = "0x2000",
+        .byte_count       = 40,
+        .bytes_per_row    = 8,
+    });
+
+    CHECK(contextual_request.start_address == 0x1FF0);
+    CHECK(contextual_request.memory_reference.empty());
+}
+
+TEST_CASE("buildContextualMemoryReadRequest keeps non-address memory references unchanged") {
+    const SMemoryReadRequest contextual_request = buildContextualMemoryReadRequest({
+        .start_address    = 0x2000,
+        .memory_reference = "stack:frame:0",
+        .byte_count       = 40,
+        .bytes_per_row    = 8,
+    });
+
+    CHECK(contextual_request.start_address == 0x1FF0);
+    CHECK(contextual_request.memory_reference == "stack:frame:0");
+}
+
 TEST_CASE("buildMemoryReadRequest uses watch memory reference when available") {
     const std::vector<SWatchResult> watch_results = {
         {

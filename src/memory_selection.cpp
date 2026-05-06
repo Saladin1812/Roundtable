@@ -306,3 +306,25 @@ std::optional<SMemoryByteHighlight> buildMemoryByteHighlight(const std::vector<S
                                                              const SMemoryReadRequest& memory_read_request, bool use_synthetic_rows) {
     return buildMemoryByteHighlightFromItems(watch_results, selected_watch_index, memory_read_request, use_synthetic_rows);
 }
+
+SMemoryReadRequest buildContextualMemoryReadRequest(const SMemoryReadRequest& memory_read_request, std::size_t context_rows_before) {
+    if (memory_read_request.bytes_per_row == 0) {
+        return memory_read_request;
+    }
+
+    const std::size_t   context_bytes    = context_rows_before * memory_read_request.bytes_per_row;
+    const std::uint64_t clamped_context  = std::min<std::uint64_t>(memory_read_request.start_address, context_bytes);
+    std::uint64_t       contextual_start = memory_read_request.start_address - clamped_context;
+    contextual_start -= contextual_start % memory_read_request.bytes_per_row;
+
+    SMemoryReadRequest contextual_request = memory_read_request;
+    contextual_request.start_address      = contextual_start;
+
+    if (!contextual_request.memory_reference.empty()) {
+        if (const auto memory_reference_address = findFirstHexAddress(contextual_request.memory_reference); memory_reference_address.has_value()) {
+            contextual_request.memory_reference.clear();
+        }
+    }
+
+    return contextual_request;
+}
