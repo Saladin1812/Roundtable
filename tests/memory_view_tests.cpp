@@ -277,6 +277,32 @@ TEST_CASE("buildMemoryByteHighlight uses integer width for selected int local") 
     CHECK(highlight->byte_count == 4);
 }
 
+TEST_CASE("buildMemoryByteHighlight uses one byte for selected char pointer targets") {
+    const std::vector<SWatchResult> watch_results = {
+        {
+            .expression       = "ptr",
+            .value            = "0x1000",
+            .type             = "char*",
+            .memory_reference = "0x3000",
+            .error_message    = "",
+        },
+    };
+
+    const auto highlight = buildMemoryByteHighlight(watch_results, 0,
+                                                    {
+                                                        .start_address    = 0x1000,
+                                                        .memory_reference = "",
+                                                        .byte_count       = 40,
+                                                        .bytes_per_row    = 8,
+                                                    },
+                                                    false);
+
+    REQUIRE(highlight.has_value());
+    CHECK_FALSE(highlight->synthetic);
+    CHECK(highlight->start_address == 0x1000);
+    CHECK(highlight->byte_count == 1);
+}
+
 TEST_CASE("buildMemoryByteHighlight uses parsed byte count for synthetic array rows") {
     const std::vector<SWatchResult> watch_results = {
         {

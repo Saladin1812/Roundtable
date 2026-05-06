@@ -230,7 +230,7 @@ namespace {
         return tokens;
     }
 
-    bool isHighlightedMemoryByte(const SMemoryByteHighlight& highlight, std::size_t row_index, std::size_t byte_index) {
+    bool isHighlightedMemoryByte(const SMemoryByteHighlight& highlight, std::uint64_t row_address, std::size_t row_index, std::size_t byte_index) {
         if (highlight.byte_count == 0) {
             return false;
         }
@@ -240,7 +240,7 @@ namespace {
             return absolute_offset >= highlight.start_offset && absolute_offset < highlight.start_offset + highlight.byte_count;
         }
 
-        const std::uint64_t absolute_address = highlight.start_address + static_cast<std::uint64_t>((row_index * highlight.row_stride) + byte_index);
+        const std::uint64_t absolute_address = row_address + static_cast<std::uint64_t>(byte_index);
         return absolute_address >= highlight.start_address && absolute_address < highlight.start_address + highlight.byte_count;
     }
 
@@ -257,10 +257,14 @@ namespace {
         }
 
         const auto& [address, hex_bytes, ascii] = memory_parts.value();
-        const auto byte_tokens                  = splitMemoryByteTokens(hex_bytes);
+        const auto    byte_tokens               = splitMemoryByteTokens(hex_bytes);
+        std::uint64_t row_address               = 0;
+        try {
+            row_address = std::stoull(address, nullptr, 0);
+        } catch (const std::exception&) { row_address = 0; }
 
-        Elements   hex_elements;
-        Elements   ascii_elements;
+        Elements hex_elements;
+        Elements ascii_elements;
         hex_elements.reserve(byte_tokens.size() * 2);
         ascii_elements.reserve(ascii.size());
 
@@ -271,7 +275,7 @@ namespace {
         const auto highlight_ascii_background = theme.memory_highlight_ascii_background;
 
         for (std::size_t byte_index = 0; byte_index < byte_tokens.size(); ++byte_index) {
-            const bool highlighted = memory_context.highlight.has_value() && isHighlightedMemoryByte(memory_context.highlight.value(), row_index, byte_index);
+            const bool highlighted = memory_context.highlight.has_value() && isHighlightedMemoryByte(memory_context.highlight.value(), row_address, row_index, byte_index);
 
             auto       hex_element =
                 text(byte_tokens[byte_index]) | color(highlighted ? (is_selected ? theme.selected_memory_highlight_hex : theme.memory_highlight_hex) : default_hex_color);
@@ -292,8 +296,9 @@ namespace {
 
             hex_elements.push_back(hex_element);
             if (byte_index + 1 < byte_tokens.size()) {
-                auto       separator        = text(" ") | color(default_hex_color);
-                const bool next_highlighted = memory_context.highlight.has_value() && isHighlightedMemoryByte(memory_context.highlight.value(), row_index, byte_index + 1);
+                auto       separator = text(" ") | color(default_hex_color);
+                const bool next_highlighted =
+                    memory_context.highlight.has_value() && isHighlightedMemoryByte(memory_context.highlight.value(), row_address, row_index, byte_index + 1);
                 if (is_selected && !(highlighted && next_highlighted)) {
                     separator = separator | bgcolor(row_background);
                 }

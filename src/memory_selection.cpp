@@ -107,6 +107,9 @@ namespace {
         if (item.type == "char" || item.type == "unsigned char") {
             return 1;
         }
+        if (item.type == "char*" || item.type == "const char*" || item.type == "unsigned char*" || item.type == "const unsigned char*") {
+            return 1;
+        }
 
         return std::nullopt;
     }
@@ -195,20 +198,21 @@ SMemoryReadRequest buildMemoryReadRequest(IDebugSession& debug_session, const SD
     std::string   memory_reference = fallback_memory_reference;
 
     if (!locals.empty()) {
-        const auto& selected_local = locals[std::min(selected_local_index, locals.size() - 1)];
+        const auto& selected_local  = locals[std::min(selected_local_index, locals.size() - 1)];
+        const bool  is_pointer_like = selected_local.type.find('*') != std::string::npos;
 
         if (const auto local_memory_reference_address = findFirstHexAddress(selected_local.memory_reference); local_memory_reference_address.has_value()) {
             start_address    = local_memory_reference_address.value();
             memory_reference = selected_local.memory_reference;
         }
 
-        if (selected_local.type.find('*') != std::string::npos) {
+        if (is_pointer_like) {
             if (const auto pointer_address = findFirstHexAddress(selected_local.value); pointer_address.has_value()) {
                 start_address = pointer_address.value();
+                memory_reference.clear();
             }
         }
 
-        const bool                    is_pointer_like   = selected_local.type.find('*') != std::string::npos;
         const bool                    is_std_array_like = selected_local.type.find("std::array") != std::string::npos;
         const bool                    is_array_like     = selected_local.type.find("array") != std::string::npos || selected_local.value.find('{') != std::string::npos;
 
@@ -242,6 +246,14 @@ SMemoryReadRequest buildMemoryReadRequest(IDebugSession& debug_session, const SD
                 continue;
             }
 
+            if (is_pointer_like) {
+                if (const auto evaluated_address = findFirstHexAddress(address_result.value); evaluated_address.has_value()) {
+                    start_address = evaluated_address.value();
+                    memory_reference.clear();
+                    break;
+                }
+            }
+
             if (const auto memory_reference_address = findFirstHexAddress(address_result.memory_reference); memory_reference_address.has_value()) {
                 start_address    = memory_reference_address.value();
                 memory_reference = address_result.memory_reference;
@@ -270,9 +282,18 @@ SMemoryReadRequest buildMemoryReadRequest(const std::vector<SWatchResult>& watch
     std::string   memory_reference = fallback_memory_reference;
 
     if (!watch_results.empty()) {
-        const auto& selected_watch = watch_results[std::min(selected_watch_index, watch_results.size() - 1)];
+        const auto& selected_watch  = watch_results[std::min(selected_watch_index, watch_results.size() - 1)];
+        const bool  is_pointer_like = selected_watch.type.find('*') != std::string::npos;
 
-        if (const auto watch_memory_reference_address = findFirstHexAddress(selected_watch.memory_reference); watch_memory_reference_address.has_value()) {
+        if (is_pointer_like) {
+            if (const auto watch_value_address = findFirstHexAddress(selected_watch.value); watch_value_address.has_value()) {
+                start_address = watch_value_address.value();
+                memory_reference.clear();
+            } else if (const auto watch_memory_reference_address = findFirstHexAddress(selected_watch.memory_reference); watch_memory_reference_address.has_value()) {
+                start_address    = watch_memory_reference_address.value();
+                memory_reference = selected_watch.memory_reference;
+            }
+        } else if (const auto watch_memory_reference_address = findFirstHexAddress(selected_watch.memory_reference); watch_memory_reference_address.has_value()) {
             start_address    = watch_memory_reference_address.value();
             memory_reference = selected_watch.memory_reference;
         } else if (const auto watch_value_address = findFirstHexAddress(selected_watch.value); watch_value_address.has_value()) {

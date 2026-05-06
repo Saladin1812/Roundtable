@@ -55,6 +55,25 @@ TEST_CASE("mock debug session returns variable-shaped memory for integer locals"
     CHECK(memory_read_result.memory_bytes[3] == 0x00);
 }
 
+TEST_CASE("mock debug session supports contextual reads around integer locals") {
+    CMockDebugSession       debug_session   = {};
+    const SDebugSelection   debug_selection = {};
+
+    const SMemoryReadResult memory_read_result = debug_session.readMemory(debug_selection,
+                                                                          {
+                                                                              .start_address    = 0x1FF0,
+                                                                              .memory_reference = "",
+                                                                              .byte_count       = 24,
+                                                                              .bytes_per_row    = 8,
+                                                                          });
+
+    REQUIRE(memory_read_result.memory_bytes.size() == 24);
+    CHECK(memory_read_result.memory_bytes[16] == 0x2A);
+    CHECK(memory_read_result.memory_bytes[17] == 0x00);
+    CHECK(memory_read_result.memory_bytes[18] == 0x00);
+    CHECK(memory_read_result.memory_bytes[19] == 0x00);
+}
+
 TEST_CASE("mock debug session returns locals for the current selection") {
     CMockDebugSession     debug_session   = {};
     const SDebugSelection debug_selection = {
@@ -71,6 +90,7 @@ TEST_CASE("mock debug session returns locals for the current selection") {
     CHECK(locals[1].name == "ptr");
     CHECK(locals[1].value == "0x1000");
     CHECK(locals[1].type == "char*");
+    CHECK(locals[1].memory_reference == "0x3000");
 }
 
 TEST_CASE("mock debug session evaluates watch expressions") {
@@ -89,6 +109,7 @@ TEST_CASE("mock debug session evaluates watch expressions") {
     CHECK(watch_results[0].error_message.empty());
     CHECK(watch_results[1].value == "0x1000");
     CHECK(watch_results[1].type == "char*");
+    CHECK(watch_results[1].memory_reference == "0x3000");
     CHECK(watch_results[2].value == "42");
     CHECK(watch_results[2].type == "int");
     CHECK(watch_results[2].memory_reference == "0x2000");
