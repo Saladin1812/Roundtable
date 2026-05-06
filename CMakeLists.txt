@@ -67,6 +67,7 @@ add_executable(roundtable_dap_probe
   src/memory_view.cpp
   src/pane_rows.cpp
   src/pane_state.cpp
+  src/process_list.cpp
 )
 
 add_executable(roundtable_dap_sample
@@ -118,6 +119,7 @@ if(BUILD_TESTING)
     tests/debug_session_tests.cpp
     tests/pane_rows_tests.cpp
     tests/pane_state_tests.cpp
+    tests/process_list_tests.cpp
     tests/memory_view_tests.cpp
     src/app_config.cpp
     src/app_theme.cpp
@@ -128,6 +130,7 @@ if(BUILD_TESTING)
     src/memory_view.cpp
     src/pane_rows.cpp
     src/pane_state.cpp
+    src/process_list.cpp
   )
 
   target_include_directories(roundtable_tests PRIVATE

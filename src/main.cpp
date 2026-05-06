@@ -1,9 +1,10 @@
+#include <array>
 #include <algorithm>
 #include <memory>
 #include <optional>
-#include <utility>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <ftxui/component/component.hpp>
@@ -18,6 +19,7 @@
 #include "debug_session.hpp"
 #include "pane_refresh.hpp"
 #include "pane_state.hpp"
+#include "process_list.hpp"
 
 namespace {
 
@@ -52,6 +54,18 @@ namespace {
         bool         active          = false;
         eThemePreset original_preset = eThemePreset::DEFAULT;
         std::size_t  selected_index  = 0;
+    };
+
+    struct SProcessPickerState {
+        bool                      active = false;
+        std::vector<SProcessInfo> processes;
+        std::size_t               selected_index = 0;
+    };
+
+    struct SMessageOverlayState {
+        bool                     active = false;
+        std::string              title;
+        std::vector<std::string> lines;
     };
 
     SPromptState beginPrompt(ePromptMode mode, std::string initial_input = "", bool replace_on_input = false) {
@@ -97,6 +111,7 @@ namespace {
         std::uint64_t                  disassembly_start_address = 0x401000;
         std::string                    disassembly_memory_reference;
         std::string                    status_message;
+        bool                           success = false;
     };
 
     bool initializeDapSession(CDapDebugSession& dap_session, std::string& error_message) {
@@ -574,6 +589,81 @@ namespace {
         return window(text(" Theme Picker ") | color(theme.title), vbox(rows)) | size(WIDTH, EQUAL, 30) | color(theme.overlay_border);
     }
 
+    std::string formatProcessRow(const SProcessInfo& process) {
+        return std::to_string(process.process_id) + "  " + process.name;
+    }
+
+    ftxui::Element renderProcessPickerOverlay(const SProcessPickerState& process_picker_state, const SAppTheme& theme) {
+        using namespace ftxui;
+
+        Elements rows = {
+            text("j/k or arrows to choose") | color(theme.chrome),
+            text("Return attach  r refresh  Esc cancel") | color(theme.chrome),
+            separator(),
+        };
+
+        if (process_picker_state.processes.empty()) {
+            rows.push_back(text("(no processes found)") | color(theme.chrome));
+        } else {
+            constexpr std::size_t kVisibleRows  = 12;
+            const std::size_t     clamped_index = std::min(process_picker_state.selected_index, process_picker_state.processes.size() - 1);
+            const std::size_t     window_start  = clamped_index > (kVisibleRows / 2) ?
+                     std::min(clamped_index - (kVisibleRows / 2), process_picker_state.processes.size() - std::min(kVisibleRows, process_picker_state.processes.size())) :
+                     0;
+            const std::size_t     window_end    = std::min(window_start + kVisibleRows, process_picker_state.processes.size());
+
+            for (std::size_t index = window_start; index < window_end; ++index) {
+                Element row = hbox({
+                                  text(index == clamped_index ? "> " : "  "),
+                                  text(formatProcessRow(process_picker_state.processes[index])),
+                              }) |
+                    color(theme.chrome);
+                if (index == clamped_index) {
+                    row = row | bgcolor(theme.selected_background) | color(theme.selected_foreground);
+                }
+                rows.push_back(row);
+            }
+        }
+
+        return window(text(" Attach to Process ") | color(theme.title), vbox(rows)) | size(WIDTH, EQUAL, 44) | color(theme.overlay_border);
+    }
+
+    SMessageOverlayState buildAttachFailureOverlay(const std::string& error_message) {
+        SMessageOverlayState overlay = {
+            .active = true,
+            .title  = " Attach Failed ",
+            .lines  = {},
+        };
+
+        overlay.lines.push_back(error_message);
+
+        if (error_message.find("kernel.yama.ptrace_scope=1") != std::string::npos) {
+            overlay.lines.push_back("");
+            overlay.lines.push_back("Linux ptrace policy blocked attach.");
+            overlay.lines.push_back("Temporarily allow attach with:");
+            overlay.lines.push_back("sudo sysctl -w kernel.yama.ptrace_scope=0");
+            overlay.lines.push_back("");
+            overlay.lines.push_back("Press Esc or Return to close.");
+            return overlay;
+        }
+
+        overlay.lines.push_back("");
+        overlay.lines.push_back("Press Esc or Return to close.");
+        return overlay;
+    }
+
+    ftxui::Element renderMessageOverlay(const SMessageOverlayState& overlay_state, const SAppTheme& theme) {
+        using namespace ftxui;
+
+        Elements rows;
+        rows.reserve(overlay_state.lines.size() + 1);
+        for (const auto& line : overlay_state.lines) {
+            rows.push_back(text(line) | color(theme.chrome));
+        }
+
+        return window(text(overlay_state.title) | color(theme.title), vbox(rows)) | size(WIDTH, GREATER_THAN, 56) | color(theme.overlay_border);
+    }
+
     ftxui::Element renderLeaderPopup(const std::vector<SKeybinding>& keybindings, eFocusPane focused_pane, const SAppTheme& theme) {
         using namespace ftxui;
 
@@ -643,6 +733,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = "Mock session",
+                .success                      = true,
             };
         }
 
@@ -669,6 +760,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = "DAP launch config is incomplete and autodetect failed",
+                .success                      = false,
             };
         }
 
@@ -679,6 +771,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = "DAP attach config is incomplete and autodetect failed",
+                .success                      = false,
             };
         }
 
@@ -690,6 +783,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = bootstrap_error_message,
+                .success                      = false,
             };
         }
 
@@ -710,6 +804,7 @@ namespace {
                     .disassembly_start_address    = 0x401000,
                     .disassembly_memory_reference = "",
                     .status_message               = "DAP launch failed: " + dap_session->getLastError(),
+                    .success                      = false,
                 };
             }
             if (!finalizeDapSessionStop(*dap_session, app_config.dap_launch.continue_once, selection, disassembly_start_address, disassembly_memory_reference,
@@ -720,6 +815,7 @@ namespace {
                     .disassembly_start_address    = disassembly_start_address,
                     .disassembly_memory_reference = disassembly_memory_reference,
                     .status_message               = bootstrap_error_message,
+                    .success                      = false,
                 };
             }
         } else {
@@ -733,6 +829,7 @@ namespace {
                     .disassembly_start_address    = 0x401000,
                     .disassembly_memory_reference = "",
                     .status_message               = "DAP attach failed: " + dap_session->getLastError(),
+                    .success                      = false,
                 };
             }
             if (!finalizeDapSessionStop(*dap_session, app_config.dap_attach.continue_once, selection, disassembly_start_address, disassembly_memory_reference,
@@ -743,6 +840,7 @@ namespace {
                     .disassembly_start_address    = disassembly_start_address,
                     .disassembly_memory_reference = disassembly_memory_reference,
                     .status_message               = bootstrap_error_message,
+                    .success                      = false,
                 };
             }
         }
@@ -754,6 +852,7 @@ namespace {
             .disassembly_memory_reference = disassembly_memory_reference,
             .status_message               = selection.thread_id != 0 ? (is_launch_mode ? "DAP launch session" : "DAP attach session") :
                                                                        (is_launch_mode ? "DAP launch session without active thread" : "DAP attach session without active thread"),
+            .success                      = true,
         };
     }
 
@@ -798,7 +897,9 @@ int main() {
                       .original_preset = active_theme_preset,
                       .selected_index  = themePresetIndex(active_theme_preset),
     };
-    eWatchActionMode     watch_action_mode = eWatchActionMode::NONE;
+    SProcessPickerState  process_picker_state  = {};
+    SMessageOverlayState message_overlay_state = {};
+    eWatchActionMode     watch_action_mode     = eWatchActionMode::NONE;
 
     SSelectablePaneState locals_pane = {
         .title = " Locals ",
@@ -855,6 +956,8 @@ int main() {
             .original_preset = active_theme_preset,
             .selected_index  = themePresetIndex(active_theme_preset),
         };
+        process_picker_state  = {};
+        message_overlay_state = {};
 
         bootstrap_result             = bootstrapSession(app_config);
         debug_session                = std::move(bootstrap_result.session);
@@ -865,6 +968,47 @@ int main() {
         transient_status_message     = "Config reloaded";
         memory_navigation_offset     = 0;
 
+        refreshAllPanes();
+    };
+
+    const auto startProcessPicker = [&] {
+        process_picker_state = {
+            .active         = true,
+            .processes      = listAttachableProcesses(),
+            .selected_index = 0,
+        };
+        transient_status_message = process_picker_state.processes.empty() ? "No running processes found" : "Choose process to attach";
+    };
+
+    const auto attachToSelectedProcess = [&] {
+        if (process_picker_state.processes.empty() || process_picker_state.selected_index >= process_picker_state.processes.size()) {
+            transient_status_message = "No process selected";
+            process_picker_state     = {};
+            return;
+        }
+
+        const auto& selected_process        = process_picker_state.processes[process_picker_state.selected_index];
+        SAppConfig  attach_config           = app_config;
+        attach_config.session_mode          = eSessionMode::DAP_ATTACH;
+        attach_config.dap_attach.process_id = selected_process.process_id;
+
+        auto attach_result = bootstrapSession(attach_config);
+        if (!attach_result.success) {
+            transient_status_message = attach_result.status_message;
+            message_overlay_state    = buildAttachFailureOverlay(attach_result.status_message);
+            return;
+        }
+
+        debug_session                = std::move(attach_result.session);
+        debug_selection              = attach_result.selection;
+        disassembly_start_address    = attach_result.disassembly_start_address;
+        disassembly_memory_reference = attach_result.disassembly_memory_reference;
+        base_session_status          = attach_result.status_message;
+        transient_status_message     = "Attached to " + selected_process.name + " (" + std::to_string(selected_process.process_id) + ")";
+        memory_navigation_offset     = 0;
+        process_picker_state         = {};
+        message_overlay_state        = {};
+        focused_pane                 = normalizeFocusedPane(focused_pane, view_visibility);
         refreshAllPanes();
     };
 
@@ -924,6 +1068,20 @@ int main() {
             });
         }
 
+        if (process_picker_state.active) {
+            content = dbox({
+                content,
+                renderProcessPickerOverlay(process_picker_state, app_theme) | center,
+            });
+        }
+
+        if (message_overlay_state.active) {
+            content = dbox({
+                content,
+                renderMessageOverlay(message_overlay_state, app_theme) | center,
+            });
+        }
+
         if (prompt_state.mode != ePromptMode::NONE) {
             content = dbox({
                 content,
@@ -935,6 +1093,14 @@ int main() {
     });
 
     auto component = CatchEvent(renderer, [&](Event event) {
+        if (message_overlay_state.active) {
+            if (event == Event::Escape || event == Event::Return) {
+                message_overlay_state = {};
+                return true;
+            }
+            return true;
+        }
+
         if (prompt_state.mode != ePromptMode::NONE) {
             if (event == Event::Escape) {
                 prompt_state = {};
@@ -1067,6 +1233,51 @@ int main() {
             return true;
         }
 
+        if (process_picker_state.active) {
+            if (event == Event::Escape) {
+                process_picker_state     = {};
+                transient_status_message = {};
+                return true;
+            }
+
+            if (event == Event::Return) {
+                attachToSelectedProcess();
+                return true;
+            }
+
+            if (event == Event::Character('r')) {
+                const auto selected_process_id      = process_picker_state.processes.empty() || process_picker_state.selected_index >= process_picker_state.processes.size() ?
+                         0 :
+                         process_picker_state.processes[process_picker_state.selected_index].process_id;
+                process_picker_state.processes      = listAttachableProcesses();
+                process_picker_state.selected_index = 0;
+                if (selected_process_id > 0) {
+                    const auto selected_iterator =
+                        std::ranges::find_if(process_picker_state.processes, [&](const SProcessInfo& process) { return process.process_id == selected_process_id; });
+                    if (selected_iterator != process_picker_state.processes.end()) {
+                        process_picker_state.selected_index = static_cast<std::size_t>(std::distance(process_picker_state.processes.begin(), selected_iterator));
+                    }
+                }
+                transient_status_message = process_picker_state.processes.empty() ? "No running processes found" : "Process list refreshed";
+                return true;
+            }
+
+            const bool move_up   = event == Event::ArrowUp || event == Event::Character('k');
+            const bool move_down = event == Event::ArrowDown || event == Event::Character('j');
+
+            if (move_up && process_picker_state.selected_index > 0) {
+                --process_picker_state.selected_index;
+                return true;
+            }
+
+            if (move_down && process_picker_state.selected_index + 1 < process_picker_state.processes.size()) {
+                ++process_picker_state.selected_index;
+                return true;
+            }
+
+            return true;
+        }
+
         if (watch_action_mode != eWatchActionMode::NONE && focused_pane == eFocusPane::WATCH_LIST) {
             if (event == Event::Escape) {
                 watch_action_mode        = eWatchActionMode::NONE;
@@ -1175,6 +1386,10 @@ int main() {
                     }
                     if (command.value() == eCommand::SET_MEMORY_TARGET) {
                         prompt_state = beginPrompt(ePromptMode::MEMORY_TARGET, manual_memory_target);
+                        return true;
+                    }
+                    if (command.value() == eCommand::ATTACH_PROCESS) {
+                        startProcessPicker();
                         return true;
                     }
                     if (command.value() == eCommand::CYCLE_THEME) {

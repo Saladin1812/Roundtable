@@ -91,6 +91,7 @@ void executeCommand(eCommand command, eFocusPane& focused_pane, SViewVisibilityS
         case eCommand::EDIT_WATCH: break;
         case eCommand::REMOVE_WATCH: break;
         case eCommand::SET_MEMORY_TARGET: break;
+        case eCommand::ATTACH_PROCESS: break;
         case eCommand::CYCLE_THEME: break;
         case eCommand::RELOAD_CONFIG: break;
         case eCommand::TOGGLE_MEMORY: view_visibility.show_memory_view = !view_visibility.show_memory_view; break;
@@ -126,6 +127,9 @@ std::optional<eCommand> parseCommandName(const std::string& command_name) {
     if (command_name == "set_memory_target") {
         return eCommand::SET_MEMORY_TARGET;
     }
+    if (command_name == "attach_process") {
+        return eCommand::ATTACH_PROCESS;
+    }
     if (command_name == "cycle_theme") {
         return eCommand::CYCLE_THEME;
     }
@@ -155,6 +159,7 @@ std::string commandDescription(eCommand command) {
         case eCommand::EDIT_WATCH: return "Edit Watch";
         case eCommand::REMOVE_WATCH: return "Remove Watch";
         case eCommand::SET_MEMORY_TARGET: return "Set Memory Target";
+        case eCommand::ATTACH_PROCESS: return "Attach to Process";
         case eCommand::CYCLE_THEME: return "Choose Theme";
         case eCommand::RELOAD_CONFIG: return "Reload Config";
         case eCommand::TOGGLE_MEMORY: return "Toggle Memory View";
@@ -167,19 +172,13 @@ std::string commandDescription(eCommand command) {
 
 std::vector<SKeybinding> defaultKeybindings() {
     return {
-        {.keys = "Space l", .command = eCommand::FOCUS_LOCALS},
-        {.keys = "Space m", .command = eCommand::FOCUS_MEMORY},
-        {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},
-        {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},
-        {.keys = "Space n", .command = eCommand::ADD_WATCH},
-        {.keys = "Space e", .command = eCommand::EDIT_WATCH},
-        {.keys = "Space x", .command = eCommand::REMOVE_WATCH},
-        {.keys = "Space g", .command = eCommand::SET_MEMORY_TARGET},
-        {.keys = "Space c", .command = eCommand::CYCLE_THEME},
-        {.keys = "Space R", .command = eCommand::RELOAD_CONFIG},
-        {.keys = "Space t", .command = eCommand::TOGGLE_MEMORY},
-        {.keys = "Space a", .command = eCommand::TOGGLE_DISASSEMBLY},
-        {.keys = "Space ?", .command = eCommand::TOGGLE_SHORTCUTS_HELP},
+        {.keys = "Space l", .command = eCommand::FOCUS_LOCALS},       {.keys = "Space m", .command = eCommand::FOCUS_MEMORY},
+        {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},  {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},
+        {.keys = "Space n", .command = eCommand::ADD_WATCH},          {.keys = "Space e", .command = eCommand::EDIT_WATCH},
+        {.keys = "Space x", .command = eCommand::REMOVE_WATCH},       {.keys = "Space g", .command = eCommand::SET_MEMORY_TARGET},
+        {.keys = "Space p", .command = eCommand::ATTACH_PROCESS},     {.keys = "Space c", .command = eCommand::CYCLE_THEME},
+        {.keys = "Space R", .command = eCommand::RELOAD_CONFIG},      {.keys = "Space t", .command = eCommand::TOGGLE_MEMORY},
+        {.keys = "Space a", .command = eCommand::TOGGLE_DISASSEMBLY}, {.keys = "Space ?", .command = eCommand::TOGGLE_SHORTCUTS_HELP},
     };
 }
 
