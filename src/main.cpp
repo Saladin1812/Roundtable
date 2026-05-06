@@ -647,16 +647,16 @@ namespace {
             };
         }
 
-        const auto detected_install      = app_config.codelldb_auto_detect.enabled ? findCodeLldbInstall(app_config.codelldb_auto_detect.candidate_roots) : std::nullopt;
-        const auto resolved_command      = app_config.dap_launch.command.empty() && detected_install.has_value() ? detected_install->command : app_config.dap_launch.command;
+        const auto detected_install = app_config.codelldb_auto_detect.enabled ? findCodeLldbInstall(app_config.codelldb_auto_detect.candidate_roots) : std::nullopt;
+        const auto resolved_command = app_config.dap_launch.command.empty() && detected_install.has_value() ? detected_install->command : app_config.dap_launch.command;
         const auto resolved_liblldb_path =
             app_config.dap_launch.liblldb_path.empty() && detected_install.has_value() ? detected_install->liblldb_path : app_config.dap_launch.liblldb_path;
-        auto       dap_session           = std::make_unique<CDapDebugSession>(std::make_unique<CTcpDapTransport>(),
-                                                                              SDapEndpointConfig{
-                                                                                  .transport_kind = eDapTransportKind::TCP,
-                                                                                  .command        = resolved_command,
-                                                                                  .arguments      = {"--liblldb", resolved_liblldb_path},
-                                                                                  .auth_token     = "",
+        auto dap_session = std::make_unique<CDapDebugSession>(std::make_unique<CTcpDapTransport>(),
+                                                              SDapEndpointConfig{
+                                                                  .transport_kind = eDapTransportKind::TCP,
+                                                                  .command        = resolved_command,
+                                                                  .arguments      = {"--liblldb", resolved_liblldb_path},
+                                                                  .auth_token     = "",
                                                               });
 
         if (resolved_command.empty() || resolved_liblldb_path.empty() || app_config.dap_launch.program.empty()) {
@@ -698,8 +698,8 @@ namespace {
                 .status_message               = "DAP launch failed: " + dap_session->getLastError(),
             };
         }
-        if (!finalizeDapSessionStop(*dap_session, app_config.dap_launch.continue_once, selection, disassembly_start_address, disassembly_memory_reference,
-                                    bootstrap_error_message, "DAP continue failed: ", "DAP wait after continue failed: ")) {
+        if (!finalizeDapSessionStop(*dap_session, app_config.dap_launch.continue_once, selection, disassembly_start_address, disassembly_memory_reference, bootstrap_error_message,
+                                    "DAP continue failed: ", "DAP wait after continue failed: ")) {
             return {
                 .session                      = std::move(dap_session),
                 .selection                    = selection,
@@ -759,7 +759,7 @@ int main() {
                       .original_preset = active_theme_preset,
                       .selected_index  = themePresetIndex(active_theme_preset),
     };
-    eWatchActionMode     watch_action_mode     = eWatchActionMode::NONE;
+    eWatchActionMode     watch_action_mode = eWatchActionMode::NONE;
 
     SSelectablePaneState locals_pane = {
         .title = " Locals ",
