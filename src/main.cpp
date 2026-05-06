@@ -1,5 +1,6 @@
 #include <array>
 #include <algorithm>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -15,6 +16,7 @@
 #include "app_config.hpp"
 #include "app_theme.hpp"
 #include "codelldb_locator.hpp"
+#include "cli_options.hpp"
 #include "dap_session.hpp"
 #include "debug_session.hpp"
 #include "pane_refresh.hpp"
@@ -720,10 +722,19 @@ namespace {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     using namespace ftxui;
 
-    SAppConfig                     app_config                   = loadAppConfig("roundtable.toml");
+    const SCliOptions cli_options = parseCliOptions(argc, argv);
+    if (cli_options.show_help) {
+        std::cout << "Usage: roundtable [program-path]\n";
+        std::cout << "  roundtable                Start with roundtable.toml / defaults\n";
+        std::cout << "  roundtable ./mybinary     Force dap_launch for the given binary\n";
+        return 0;
+    }
+
+    SAppConfig app_config = loadAppConfig("roundtable.toml");
+    applyCliOverrides(cli_options, app_config);
     const auto                     buildActiveTheme             = [&](eThemePreset preset) { return applyThemeOverrides(buildTheme(preset), app_config.theme_overrides); };
     eThemePreset                   active_theme_preset          = app_config.theme_preset;
     SAppTheme                      app_theme                    = buildActiveTheme(active_theme_preset);

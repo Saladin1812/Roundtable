@@ -114,6 +114,7 @@ if(BUILD_TESTING)
   add_executable(roundtable_tests
     tests/app_config_tests.cpp
     tests/codelldb_locator_tests.cpp
+    tests/cli_options_tests.cpp
     tests/dap_session_tests.cpp
     tests/debug_session_tests.cpp
     tests/pane_rows_tests.cpp
@@ -122,6 +123,7 @@ if(BUILD_TESTING)
     src/app_config.cpp
     src/app_theme.cpp
     src/codelldb_locator.cpp
+    src/cli_options.cpp
     src/dap_session.cpp
     src/debug_session.cpp
     src/memory_selection.cpp
