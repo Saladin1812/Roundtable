@@ -15,9 +15,7 @@
 #include "app_theme.hpp"
 #include "dap_session.hpp"
 #include "debug_session.hpp"
-#include "memory_selection.hpp"
-#include "memory_view.hpp"
-#include "pane_rows.hpp"
+#include "pane_refresh.hpp"
 #include "pane_state.hpp"
 
 namespace {
@@ -90,17 +88,6 @@ namespace {
         }
 
         return 0;
-    }
-
-    std::string compactMemoryTargetLabel(std::string source, const std::string& value = {}) {
-        if (source == "ip") {
-            return "IP";
-        }
-        if (value.empty()) {
-            return source;
-        }
-
-        return std::move(source) + ":" + value;
     }
 
     struct SSessionBootstrapResult {
@@ -221,10 +208,6 @@ namespace {
 
         return std::make_tuple(row.substr(0, error_separator), row.substr(error_separator + 3), std::string{}, false);
     }
-
-    struct SMemoryRenderContext {
-        std::optional<SMemoryByteHighlight> highlight;
-    };
 
     std::vector<std::string> splitMemoryByteTokens(const std::string& hex_bytes) {
         std::vector<std::string> tokens;
@@ -719,100 +702,6 @@ namespace {
         };
     }
 
-    void refreshPaneRows(IDebugSession& debug_session, const SDebugSelection& debug_selection, SSelectablePaneState& locals_pane, SSelectablePaneState& memory_view_pane,
-                         SSelectablePaneState& disassembly_pane, SSelectablePaneState& watch_list_pane, std::uint64_t disassembly_start_address,
-                         const std::string& disassembly_memory_reference, eFocusPane focused_pane, const std::vector<SWatchExpression>& watch_expressions,
-                         const std::string& manual_memory_target, std::string& memory_target_label, SMemoryRenderContext& memory_context) {
-        const auto locals        = debug_session.getLocals(debug_selection);
-        const auto watch_results = debug_session.evaluateWatches(debug_selection, watch_expressions);
-        locals_pane.rows         = formatLocalsPaneRows(locals);
-        watch_list_pane.rows     = formatWatchListPaneRows(watch_results);
-        memory_target_label      = compactMemoryTargetLabel("IP");
-        memory_context.highlight.reset();
-
-        if (!manual_memory_target.empty()) {
-            memory_target_label = compactMemoryTargetLabel("M", manual_memory_target);
-            if (const auto direct_address = findFirstHexAddress(manual_memory_target); direct_address.has_value()) {
-                const SMemoryReadRequest memory_read_request = {
-                    .start_address    = direct_address.value(),
-                    .memory_reference = "",
-                    .byte_count       = 40,
-                    .bytes_per_row    = 8,
-                };
-                const auto memory_read_result = debug_session.readMemory(debug_selection, memory_read_request);
-                memory_view_pane.rows         = generateMemoryViewRows(memory_read_result);
-            } else {
-                const std::vector<SWatchResult> memory_target_results = debug_session.evaluateWatches(debug_selection, {{.expression = manual_memory_target}});
-                const auto                      memory_read_request   = buildMemoryReadRequest(memory_target_results, 0, disassembly_start_address, disassembly_memory_reference);
-                const auto                      memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
-                const auto                      synthetic_memory_rows = buildSyntheticMemoryRows(memory_target_results, 0, memory_read_request.bytes_per_row);
-                const bool                      using_synthetic_rows  = synthetic_memory_rows.has_value();
-                const bool                      target_has_explicit_memory_reference = !memory_target_results.empty() && !memory_target_results.front().memory_reference.empty() &&
-                    findFirstHexAddress(memory_target_results.front().memory_reference).has_value();
-                memory_context.highlight = buildMemoryByteHighlight(memory_target_results, 0, memory_read_request, using_synthetic_rows && !target_has_explicit_memory_reference);
-
-                if (synthetic_memory_rows.has_value() && !target_has_explicit_memory_reference) {
-                    memory_view_pane.rows = synthetic_memory_rows.value();
-                } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
-                    memory_view_pane.rows = synthetic_memory_rows.value();
-                } else {
-                    memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
-                }
-            }
-        } else if (focused_pane == eFocusPane::WATCH_LIST && !watch_results.empty()) {
-            const auto selected_watch_index  = std::min(watch_list_pane.selected_index, watch_results.size() - 1);
-            memory_target_label              = compactMemoryTargetLabel("W", watch_results[selected_watch_index].expression);
-            const auto memory_read_request   = buildMemoryReadRequest(watch_results, watch_list_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
-            const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
-            const auto synthetic_memory_rows = buildSyntheticMemoryRows(watch_results, watch_list_pane.selected_index, memory_read_request.bytes_per_row);
-            const bool using_synthetic_rows  = synthetic_memory_rows.has_value();
-            const bool selected_watch_has_explicit_memory_reference =
-                !watch_results[selected_watch_index].memory_reference.empty() && findFirstHexAddress(watch_results[selected_watch_index].memory_reference).has_value();
-            memory_context.highlight =
-                buildMemoryByteHighlight(watch_results, watch_list_pane.selected_index, memory_read_request, using_synthetic_rows && !selected_watch_has_explicit_memory_reference);
-
-            if (synthetic_memory_rows.has_value() && !selected_watch_has_explicit_memory_reference) {
-                memory_view_pane.rows = synthetic_memory_rows.value();
-            } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
-                memory_view_pane.rows = synthetic_memory_rows.value();
-            } else {
-                memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
-            }
-        } else {
-            if (!locals.empty()) {
-                const auto selected_local_index = std::min(locals_pane.selected_index, locals.size() - 1);
-                memory_target_label             = compactMemoryTargetLabel("L", locals[selected_local_index].name);
-            }
-            const auto memory_read_request =
-                buildMemoryReadRequest(debug_session, debug_selection, locals, locals_pane.selected_index, disassembly_start_address, disassembly_memory_reference);
-            const auto memory_read_result    = debug_session.readMemory(debug_selection, memory_read_request);
-            const auto synthetic_memory_rows = buildSyntheticMemoryRows(locals, locals_pane.selected_index, memory_read_request.bytes_per_row);
-            const bool using_synthetic_rows  = synthetic_memory_rows.has_value();
-            const auto selected_local_index  = locals.empty() ? 0UL : std::min(locals_pane.selected_index, locals.size() - 1);
-            const bool selected_local_has_explicit_memory_reference =
-                !locals.empty() && !locals[selected_local_index].memory_reference.empty() && findFirstHexAddress(locals[selected_local_index].memory_reference).has_value();
-            memory_context.highlight =
-                buildMemoryByteHighlight(locals, locals_pane.selected_index, memory_read_request, using_synthetic_rows && !selected_local_has_explicit_memory_reference);
-
-            if (synthetic_memory_rows.has_value() && !selected_local_has_explicit_memory_reference) {
-                memory_view_pane.rows = synthetic_memory_rows.value();
-            } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
-                memory_view_pane.rows = synthetic_memory_rows.value();
-            } else {
-                memory_view_pane.rows = generateMemoryViewRows(memory_read_result);
-            }
-        }
-
-        memory_view_pane.title = " Memory [" + memory_target_label + "] ";
-
-        disassembly_pane.rows = formatDisassemblyPaneRows(debug_session.disassemble(debug_selection, disassembly_start_address, 8));
-
-        locals_pane.selected_index      = std::min(locals_pane.selected_index, locals_pane.rows.empty() ? 0UL : locals_pane.rows.size() - 1);
-        memory_view_pane.selected_index = std::min(memory_view_pane.selected_index, memory_view_pane.rows.empty() ? 0UL : memory_view_pane.rows.size() - 1);
-        disassembly_pane.selected_index = std::min(disassembly_pane.selected_index, disassembly_pane.rows.empty() ? 0UL : disassembly_pane.rows.size() - 1);
-        watch_list_pane.selected_index  = std::min(watch_list_pane.selected_index, watch_list_pane.rows.empty() ? 0UL : watch_list_pane.rows.size() - 1);
-    }
-
 } // namespace
 
 int main() {
@@ -874,7 +763,28 @@ int main() {
     std::string          memory_target_label = {};
     SMemoryRenderContext memory_context      = {};
 
-    const auto           reloadConfig = [&] {
+    const auto           refreshAllPanes = [&] {
+        SPaneRefreshInputs inputs = {
+                      .debug_session                = *debug_session,
+                      .debug_selection              = debug_selection,
+                      .disassembly_start_address    = disassembly_start_address,
+                      .disassembly_memory_reference = disassembly_memory_reference,
+                      .focused_pane                 = focused_pane,
+                      .watch_expressions            = watch_expressions,
+                      .manual_memory_target         = manual_memory_target,
+        };
+        SPaneRefreshOutputs outputs = {
+                      .locals_pane         = locals_pane,
+                      .memory_view_pane    = memory_view_pane,
+                      .disassembly_pane    = disassembly_pane,
+                      .watch_list_pane     = watch_list_pane,
+                      .memory_target_label = memory_target_label,
+                      .memory_context      = memory_context,
+        };
+        refreshPaneRows(inputs, outputs);
+    };
+
+    const auto reloadConfig = [&] {
         app_config                            = loadAppConfig("roundtable.toml");
         keybindings                           = app_config.keybindings;
         active_theme_preset                   = app_config.theme_preset;
@@ -884,9 +794,9 @@ int main() {
         focused_pane                          = normalizeFocusedPane(focused_pane, view_visibility);
 
         theme_picker_state = {
-                      .active          = false,
-                      .original_preset = active_theme_preset,
-                      .selected_index  = themePresetIndex(active_theme_preset),
+            .active          = false,
+            .original_preset = active_theme_preset,
+            .selected_index  = themePresetIndex(active_theme_preset),
         };
 
         bootstrap_result             = bootstrapSession(app_config);
@@ -897,12 +807,10 @@ int main() {
         base_session_status          = bootstrap_result.status_message;
         transient_status_message     = "Config reloaded";
 
-        refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
-                                  focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+        refreshAllPanes();
     };
 
-    refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address, disassembly_memory_reference,
-                    focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+    refreshAllPanes();
 
     auto renderer = Renderer([&] {
         const std::string current_status  = transient_status_message.empty() ? base_session_status : transient_status_message;
@@ -992,8 +900,7 @@ int main() {
                 }
 
                 prompt_state = {};
-                refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                refreshAllPanes();
                 return true;
             }
 
@@ -1117,8 +1024,7 @@ int main() {
                         if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
                             --watch_list_pane.selected_index;
                         }
-                        refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                        disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                        refreshAllPanes();
                     }
                 }
 
@@ -1129,8 +1035,7 @@ int main() {
 
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
-                refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                refreshAllPanes();
             }
             return true;
         }
@@ -1141,8 +1046,7 @@ int main() {
         }
 
         if (event == Event::Character('r')) {
-            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+            refreshAllPanes();
             return true;
         }
 
@@ -1175,8 +1079,7 @@ int main() {
                             focused_pane             = eFocusPane::WATCH_LIST;
                             watch_action_mode        = eWatchActionMode::EDIT;
                             transient_status_message = "Choose watch with j/k, press Return to edit, Esc to cancel";
-                            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                            refreshAllPanes();
                             return true;
                         }
                         if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
@@ -1194,8 +1097,7 @@ int main() {
                             focused_pane             = eFocusPane::WATCH_LIST;
                             watch_action_mode        = eWatchActionMode::REMOVE;
                             transient_status_message = "Choose watch with j/k, press Return to remove, Esc to cancel";
-                            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                            refreshAllPanes();
                             return true;
                         }
                         if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
@@ -1204,8 +1106,7 @@ int main() {
                                 --watch_list_pane.selected_index;
                             }
                             focused_pane = eFocusPane::WATCH_LIST;
-                            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                            refreshAllPanes();
                         }
                         return true;
                     }
@@ -1227,8 +1128,7 @@ int main() {
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);
-                    refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                    disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                    refreshAllPanes();
                     return true;
                 }
             }
@@ -1243,24 +1143,21 @@ int main() {
 
         if (event == Event::Tab) {
             focused_pane = advanceFocusPane(focused_pane, view_visibility);
-            refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                            disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+            refreshAllPanes();
             return true;
         }
 
         if (focused_pane == eFocusPane::LOCALS) {
             const bool handled = handleVerticalNavigation(event, locals_pane);
             if (handled) {
-                refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                refreshAllPanes();
             }
             return handled;
         }
         if (focused_pane == eFocusPane::WATCH_LIST) {
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
-                refreshPaneRows(*debug_session, debug_selection, locals_pane, memory_view_pane, disassembly_pane, watch_list_pane, disassembly_start_address,
-                                disassembly_memory_reference, focused_pane, watch_expressions, manual_memory_target, memory_target_label, memory_context);
+                refreshAllPanes();
             }
             return handled;
         }
