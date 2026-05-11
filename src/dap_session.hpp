@@ -158,6 +158,21 @@ struct SDapDisassembleResponse {
     std::string                              error_message;
 };
 
+struct SDapSourceBreakpoint {
+    std::int64_t line = 0;
+};
+
+struct SDapSetBreakpointsRequest {
+    std::string                       source_path;
+    std::vector<SDapSourceBreakpoint> breakpoints;
+};
+
+struct SDapSetBreakpointsResponse {
+    bool        success          = false;
+    std::size_t breakpoint_count = 0;
+    std::string error_message;
+};
+
 struct SDapLaunchRequest {
     std::string              program;
     std::vector<std::string> arguments;
@@ -250,6 +265,8 @@ class CDapDebugSession : public IDebugSession {
     static SDapEvaluateResponse          parseEvaluateResponseMessage(const std::string& response_message);
     static std::string                   buildDisassembleRequestMessage(int sequence_number, const SDapDisassembleRequest& disassemble_request);
     static SDapDisassembleResponse       parseDisassembleResponseMessage(const std::string& response_message);
+    static std::string                   buildSetBreakpointsRequestMessage(int sequence_number, const SDapSetBreakpointsRequest& set_breakpoints_request);
+    static SDapSetBreakpointsResponse    parseSetBreakpointsResponseMessage(const std::string& response_message);
     static std::string                   buildLaunchRequestMessage(int sequence_number, const SDapLaunchRequest& launch_request);
     static std::string                   buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request);
     static std::string                   buildConfigurationDoneRequestMessage(int sequence_number);
@@ -269,6 +286,7 @@ class CDapDebugSession : public IDebugSession {
     SDapContinueResponse                 continueExecution(const SDapContinueRequest& continue_request);
     SDapEvaluateResponse                 evaluate(const SDapEvaluateRequest& evaluate_request);
     SDapDisassembleResponse              disassembleInstructions(const SDapDisassembleRequest& disassemble_request);
+    SDapSetBreakpointsResponse           setBreakpoints(const SDapSetBreakpointsRequest& set_breakpoints_request);
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);

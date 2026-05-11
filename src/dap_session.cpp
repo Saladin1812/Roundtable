@@ -29,6 +29,26 @@ namespace {
         std::cerr << prefix << message << '\n';
     }
 
+    std::string jsonEscape(const std::string& value) {
+        std::string escaped_value;
+        escaped_value.reserve(value.size());
+
+        for (const char character : value) {
+            switch (character) {
+                case '"': escaped_value += R"(\")"; break;
+                case '\\': escaped_value += R"(\\)"; break;
+                case '\b': escaped_value += R"(\b)"; break;
+                case '\f': escaped_value += R"(\f)"; break;
+                case '\n': escaped_value += R"(\n)"; break;
+                case '\r': escaped_value += R"(\r)"; break;
+                case '\t': escaped_value += R"(\t)"; break;
+                default: escaped_value.push_back(character); break;
+            }
+        }
+
+        return escaped_value;
+    }
+
     bool readFramedMessageFromFileDescriptor(int file_descriptor, std::string& pending_buffer, std::string& message, std::string& error_message);
 
 } // namespace
@@ -471,6 +491,20 @@ std::string CDapDebugSession::buildDisassembleRequestMessage(int sequence_number
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"disassemble","arguments":{"memoryReference":")" + disassemble_request.memory_reference +
         R"(","instructionOffset":)" + std::to_string(disassemble_request.instruction_offset) + R"(,"instructionCount":)" + std::to_string(disassemble_request.instruction_count) +
         "}}";
+}
+
+std::string CDapDebugSession::buildSetBreakpointsRequestMessage(int sequence_number, const SDapSetBreakpointsRequest& set_breakpoints_request) {
+    std::string breakpoints_json = "[";
+    for (std::size_t index = 0; index < set_breakpoints_request.breakpoints.size(); ++index) {
+        if (index > 0) {
+            breakpoints_json += ",";
+        }
+        breakpoints_json += R"({"line":)" + std::to_string(set_breakpoints_request.breakpoints[index].line) + "}";
+    }
+    breakpoints_json += "]";
+
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"setBreakpoints","arguments":{"source":{"path":")" +
+        jsonEscape(set_breakpoints_request.source_path) + R"("},"breakpoints":)" + breakpoints_json + R"(,"sourceModified":false}})";
 }
 
 namespace {
@@ -956,6 +990,18 @@ SDapDisassembleResponse CDapDebugSession::parseDisassembleResponseMessage(const 
         }
     }
 
+    return response;
+}
+
+SDapSetBreakpointsResponse CDapDebugSession::parseSetBreakpointsResponseMessage(const std::string& response_message) {
+    SDapSetBreakpointsResponse response = {};
+    response.success                    = response_message.find("\"success\":true") != std::string::npos;
+    if (!response.success) {
+        response.error_message = extractJsonStringField(response_message, "message").value_or("DAP setBreakpoints response did not report success");
+        return response;
+    }
+
+    response.breakpoint_count = extractTopLevelObjectsFromArray(response_message, "breakpoints").size();
     return response;
 }
 
@@ -1535,6 +1581,49 @@ SDapDisassembleResponse CDapDebugSession::disassembleInstructions(const SDapDisa
 
         if (message.type == "response" && message.command_name == "disassemble") {
             return parseDisassembleResponseMessage(response_message);
+        }
+    }
+}
+
+SDapSetBreakpointsResponse CDapDebugSession::setBreakpoints(const SDapSetBreakpointsRequest& set_breakpoints_request) {
+    if (!isConnected()) {
+        return {
+            .success          = false,
+            .breakpoint_count = 0,
+            .error_message    = "DAP session is not connected",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildSetBreakpointsRequestMessage(next_sequence_number_++, set_breakpoints_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success          = false,
+            .breakpoint_count = 0,
+            .error_message    = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success          = false,
+                .breakpoint_count = 0,
+                .error_message    = error_message,
+            };
+        }
+
+        logDapMessage("dap setBreakpoints message: ", response_message);
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "setBreakpoints") {
+            return parseSetBreakpointsResponseMessage(response_message);
         }
     }
 }

@@ -43,6 +43,11 @@ working_directory = "."
 stop_on_entry = true
 continue_once = false
 
+[breakpoints]
+entries = [
+  "samples/dap_sample_target.cpp:10",
+]
+
 [codelldb.auto_detect]
 enabled = true
 candidate_roots = [

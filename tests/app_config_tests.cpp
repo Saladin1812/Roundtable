@@ -50,6 +50,12 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "stop_on_entry = false\n";
         config_stream << "continue_once = true\n";
         config_stream << "\n";
+        config_stream << "[breakpoints]\n";
+        config_stream << "entries = [\n";
+        config_stream << "  \"src/main.cpp:42\",\n";
+        config_stream << "  \"/tmp/sample.cpp:7\",\n";
+        config_stream << "]\n";
+        config_stream << "\n";
         config_stream << "[keybindings]\n";
         config_stream << "focus_memory = \"Space x\"\n";
         config_stream << "toggle_shortcuts_help = \"Space h\"\n";
@@ -85,6 +91,11 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     CHECK(config.dap_launch.working_directory == "/tmp");
     CHECK_FALSE(config.dap_launch.stop_on_entry);
     CHECK(config.dap_launch.continue_once);
+    REQUIRE(config.breakpoints.size() == 2);
+    CHECK(config.breakpoints[0].source_path == std::filesystem::path("src/main.cpp"));
+    CHECK(config.breakpoints[0].line == 42);
+    CHECK(config.breakpoints[1].source_path == std::filesystem::path("/tmp/sample.cpp"));
+    CHECK(config.breakpoints[1].line == 7);
 
     const auto memory_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_MEMORY; });
     REQUIRE(memory_keybinding != config.keybindings.end());

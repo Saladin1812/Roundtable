@@ -1,6 +1,8 @@
 #include <array>
 #include <algorithm>
+#include <filesystem>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -111,6 +113,33 @@ namespace {
         if (!dap_session.initialize()) {
             error_message = "DAP initialize failed: " + dap_session.getLastError();
             return false;
+        }
+
+        return true;
+    }
+
+    bool configureDapBreakpoints(CDapDebugSession& dap_session, const std::vector<SSourceBreakpointConfig>& breakpoints, std::string& error_message) {
+        std::map<std::string, std::vector<SDapSourceBreakpoint>> breakpoints_by_source;
+        for (const auto& breakpoint : breakpoints) {
+            if (breakpoint.line <= 0 || breakpoint.source_path.empty()) {
+                continue;
+            }
+
+            breakpoints_by_source[std::filesystem::absolute(breakpoint.source_path).string()].push_back({
+                .line = breakpoint.line,
+            });
+        }
+
+        for (const auto& [source_path, source_breakpoints] : breakpoints_by_source) {
+            const auto response = dap_session.setBreakpoints({
+                .source_path = source_path,
+                .breakpoints = source_breakpoints,
+            });
+
+            if (!response.success) {
+                error_message = "DAP setBreakpoints failed: " + response.error_message;
+                return false;
+            }
         }
 
         return true;
@@ -700,6 +729,17 @@ namespace {
                 .status_message               = "DAP launch failed: " + dap_session->getLastError(),
             };
         }
+
+        if (!configureDapBreakpoints(*dap_session, app_config.breakpoints, bootstrap_error_message)) {
+            return {
+                .session                      = std::move(dap_session),
+                .selection                    = {},
+                .disassembly_start_address    = 0x401000,
+                .disassembly_memory_reference = "",
+                .status_message               = bootstrap_error_message,
+            };
+        }
+
         if (!finalizeDapSessionStop(*dap_session, app_config.dap_launch.continue_once, selection, disassembly_start_address, disassembly_memory_reference, bootstrap_error_message,
                                     "DAP continue failed: ", "DAP wait after continue failed: ")) {
             return {

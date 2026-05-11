@@ -476,6 +476,29 @@ TEST_CASE("CDapDebugSession builds an attach request message") {
     CHECK(request_message.find("\"stopOnEntry\":true") != std::string::npos);
 }
 
+TEST_CASE("CDapDebugSession builds a setBreakpoints request message") {
+    const std::string request_message = CDapDebugSession::buildSetBreakpointsRequestMessage(12,
+                                                                                            {
+                                                                                                .source_path = "/tmp/program.cpp",
+                                                                                                .breakpoints = {{.line = 42}, {.line = 51}},
+                                                                                            });
+
+    CHECK(request_message.find("\"seq\":12") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"setBreakpoints\"") != std::string::npos);
+    CHECK(request_message.find("\"path\":\"/tmp/program.cpp\"") != std::string::npos);
+    CHECK(request_message.find("\"breakpoints\":[{\"line\":42},{\"line\":51}]") != std::string::npos);
+    CHECK(request_message.find("\"sourceModified\":false") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a setBreakpoints response message") {
+    const SDapSetBreakpointsResponse response = CDapDebugSession::parseSetBreakpointsResponseMessage(
+        R"({"type":"response","command":"setBreakpoints","success":true,"body":{"breakpoints":[{"verified":true,"line":42},{"verified":true,"line":51}]}})");
+
+    CHECK(response.success);
+    CHECK(response.breakpoint_count == 2);
+    CHECK(response.error_message.empty());
+}
+
 TEST_CASE("CDapDebugSession parses generic DAP protocol messages") {
     const auto event_message = CDapDebugSession::parseProtocolMessage(R"({"type":"event","event":"stopped"})");
     CHECK(event_message.type == "event");
@@ -485,6 +508,25 @@ TEST_CASE("CDapDebugSession parses generic DAP protocol messages") {
     CHECK(response_message.type == "response");
     CHECK(response_message.command_name == "launch");
     CHECK(response_message.success);
+}
+
+TEST_CASE("CDapDebugSession sets breakpoints from a setBreakpoints response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"output"})",
+        R"({"type":"response","command":"setBreakpoints","success":true,"body":{"breakpoints":[{"verified":true,"line":42}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto response = dap_session.setBreakpoints({
+        .source_path = "/tmp/program.cpp",
+        .breakpoints = {{.line = 42}},
+    });
+
+    CHECK(response.success);
+    CHECK(response.breakpoint_count == 1);
 }
 
 TEST_CASE("CDapDebugSession launches after receiving initialized event and launch response") {

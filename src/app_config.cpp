@@ -124,6 +124,33 @@ namespace {
         return items;
     }
 
+    std::optional<SSourceBreakpointConfig> parseSourceBreakpoint(std::string value) {
+        value                         = unquote(trim(std::move(value)));
+        const auto separator_position = value.rfind(':');
+        if (separator_position == std::string::npos || separator_position + 1 >= value.size()) {
+            return std::nullopt;
+        }
+
+        const auto source_path = trim(value.substr(0, separator_position));
+        const auto line_text   = trim(value.substr(separator_position + 1));
+        if (source_path.empty() || line_text.empty()) {
+            return std::nullopt;
+        }
+
+        std::int64_t line   = 0;
+        const auto*  begin  = line_text.data();
+        const auto*  end    = begin + line_text.size();
+        const auto   result = std::from_chars(begin, end, line);
+        if (result.ec != std::errc{} || result.ptr != end || line <= 0) {
+            return std::nullopt;
+        }
+
+        return SSourceBreakpointConfig{
+            .source_path = std::filesystem::path(source_path),
+            .line        = line,
+        };
+    }
+
     void assignThemeOverride(SThemeOverrides& overrides, const std::string& key, const std::string& value) {
         const auto parsed_color = parseHexColor(value);
         if (!parsed_color.has_value()) {
@@ -244,7 +271,17 @@ SAppConfig loadAppConfig(const std::string& config_path) {
         }
 
         const std::string key   = trim(line.substr(0, separator_position));
-        const std::string value = trim(line.substr(separator_position + 1));
+        std::string       value = trim(line.substr(separator_position + 1));
+        if (!value.empty() && value.front() == '[' && value.back() != ']') {
+            std::string continuation_line;
+            while (std::getline(config_stream, continuation_line)) {
+                continuation_line = trim(stripComment(std::move(continuation_line)));
+                value += continuation_line;
+                if (!continuation_line.empty() && continuation_line.back() == ']') {
+                    break;
+                }
+            }
+        }
 
         if (current_section == "views") {
             if (key == "show_memory") {
@@ -286,6 +323,19 @@ SAppConfig loadAppConfig(const std::string& config_path) {
                 config.dap_launch.stop_on_entry = parseBool(value, config.dap_launch.stop_on_entry);
             } else if (key == "continue_once") {
                 config.dap_launch.continue_once = parseBool(value, config.dap_launch.continue_once);
+            }
+            continue;
+        }
+
+        if (current_section == "breakpoints") {
+            if (key == "entries") {
+                config.breakpoints.clear();
+                for (const auto& item : parseStringArray(value)) {
+                    const auto parsed_breakpoint = parseSourceBreakpoint(item);
+                    if (parsed_breakpoint.has_value()) {
+                        config.breakpoints.push_back(parsed_breakpoint.value());
+                    }
+                }
             }
             continue;
         }
