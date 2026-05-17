@@ -441,6 +441,24 @@ TEST_CASE("CDapDebugSession parses a step into response message") {
     CHECK(response.error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession builds a step out request message") {
+    const std::string request_message = CDapDebugSession::buildStepOutRequestMessage(18,
+                                                                                     {
+                                                                                         .thread_id = 13,
+                                                                                     });
+
+    CHECK(request_message.find("\"seq\":18") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"stepOut\"") != std::string::npos);
+    CHECK(request_message.find("\"threadId\":13") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a step out response message") {
+    const SDapStepOutResponse response = CDapDebugSession::parseStepOutResponseMessage(R"({"success":true})");
+
+    REQUIRE(response.success);
+    CHECK(response.error_message.empty());
+}
+
 TEST_CASE("CDapDebugSession builds an evaluate request message") {
     const std::string request_message = CDapDebugSession::buildEvaluateRequestMessage(16,
                                                                                       {
@@ -750,6 +768,24 @@ TEST_CASE("CDapDebugSession steps into from a stepIn response") {
 
     REQUIRE(dap_session.connect());
     const auto step_response = dap_session.stepInto({
+        .thread_id = 13,
+    });
+
+    REQUIRE(step_response.success);
+    CHECK(step_response.error_message.empty());
+}
+
+TEST_CASE("CDapDebugSession steps out from a stepOut response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"continued","body":{"threadId":13}})",
+        R"({"type":"response","command":"stepOut","success":true})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto step_response = dap_session.stepOut({
         .thread_id = 13,
     });
 

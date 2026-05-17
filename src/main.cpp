@@ -996,6 +996,37 @@ int main(int argc, char** argv) {
         refreshAllPanes();
     };
 
+    const auto stepOutActiveDapSession = [&]() {
+        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
+        if (dap_session == nullptr) {
+            transient_status_message = "Step out is only available in DAP sessions";
+            return;
+        }
+        if (debug_selection.thread_id == 0) {
+            transient_status_message = "Step out failed: no active thread";
+            return;
+        }
+
+        const auto step_response = dap_session->stepOut({
+            .thread_id = static_cast<int>(debug_selection.thread_id),
+        });
+        if (!step_response.success) {
+            transient_status_message = "Step out failed: " + step_response.error_message;
+            return;
+        }
+
+        if (!dap_session->waitForStoppedEvent()) {
+            transient_status_message = "Wait after step out failed: " + dap_session->getLastError();
+            return;
+        }
+
+        updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+
+        memory_navigation_offset = 0;
+        transient_status_message = "Stopped after step out";
+        refreshAllPanes();
+    };
+
     refreshAllPanes();
 
     auto renderer = Renderer([&] {
@@ -1355,6 +1386,10 @@ int main(int argc, char** argv) {
                     }
                     if (command.value() == eCommand::STEP_INTO) {
                         stepIntoActiveDapSession();
+                        return true;
+                    }
+                    if (command.value() == eCommand::STEP_OUT) {
+                        stepOutActiveDapSession();
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);

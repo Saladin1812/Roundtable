@@ -490,6 +490,10 @@ std::string CDapDebugSession::buildStepIntoRequestMessage(int sequence_number, c
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"stepIn","arguments":{"threadId":)" + std::to_string(step_into_request.thread_id) + "}}";
 }
 
+std::string CDapDebugSession::buildStepOutRequestMessage(int sequence_number, const SDapStepOutRequest& step_out_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"stepOut","arguments":{"threadId":)" + std::to_string(step_out_request.thread_id) + "}}";
+}
+
 std::string CDapDebugSession::buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request) {
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"evaluate","arguments":{"expression":")" + evaluate_request.expression +
         R"(","frameId":)" + std::to_string(evaluate_request.frame_id) + R"(,"context":")" + evaluate_request.context + R"("}})";
@@ -953,6 +957,18 @@ SDapStepIntoResponse CDapDebugSession::parseStepIntoResponseMessage(const std::s
 
     if (response_message.find("\"success\":true") == std::string::npos) {
         response.error_message = "DAP stepIn response did not report success";
+        return response;
+    }
+
+    response.success = true;
+    return response;
+}
+
+SDapStepOutResponse CDapDebugSession::parseStepOutResponseMessage(const std::string& response_message) {
+    SDapStepOutResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP stepOut response did not report success";
         return response;
     }
 
@@ -1583,6 +1599,46 @@ SDapStepIntoResponse CDapDebugSession::stepInto(const SDapStepIntoRequest& step_
 
         if (message.type == "response" && message.command_name == "stepIn") {
             return parseStepIntoResponseMessage(response_message);
+        }
+    }
+}
+
+SDapStepOutResponse CDapDebugSession::stepOut(const SDapStepOutRequest& step_out_request) {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildStepOutRequestMessage(next_sequence_number_++, step_out_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .error_message = error_message,
+            };
+        }
+
+        logDapMessage("dap stepOut message: ", response_message);
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "stepOut") {
+            return parseStepOutResponseMessage(response_message);
         }
     }
 }

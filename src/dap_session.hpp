@@ -144,6 +144,15 @@ struct SDapStepIntoResponse {
     std::string error_message;
 };
 
+struct SDapStepOutRequest {
+    int thread_id = 0;
+};
+
+struct SDapStepOutResponse {
+    bool        success = false;
+    std::string error_message;
+};
+
 struct SDapEvaluateRequest {
     std::string expression;
     int         frame_id = 0;
@@ -283,6 +292,8 @@ class CDapDebugSession : public IDebugSession {
     static SDapStepOverResponse          parseStepOverResponseMessage(const std::string& response_message);
     static std::string                   buildStepIntoRequestMessage(int sequence_number, const SDapStepIntoRequest& step_into_request);
     static SDapStepIntoResponse          parseStepIntoResponseMessage(const std::string& response_message);
+    static std::string                   buildStepOutRequestMessage(int sequence_number, const SDapStepOutRequest& step_out_request);
+    static SDapStepOutResponse           parseStepOutResponseMessage(const std::string& response_message);
     static std::string                   buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request);
     static SDapEvaluateResponse          parseEvaluateResponseMessage(const std::string& response_message);
     static std::string                   buildDisassembleRequestMessage(int sequence_number, const SDapDisassembleRequest& disassemble_request);
@@ -308,6 +319,7 @@ class CDapDebugSession : public IDebugSession {
     SDapContinueResponse                 continueExecution(const SDapContinueRequest& continue_request);
     SDapStepOverResponse                 stepOver(const SDapStepOverRequest& step_over_request);
     SDapStepIntoResponse                 stepInto(const SDapStepIntoRequest& step_into_request);
+    SDapStepOutResponse                  stepOut(const SDapStepOutRequest& step_out_request);
     SDapEvaluateResponse                 evaluate(const SDapEvaluateRequest& evaluate_request);
     SDapDisassembleResponse              disassembleInstructions(const SDapDisassembleRequest& disassemble_request);
     SDapSetBreakpointsResponse           setBreakpoints(const SDapSetBreakpointsRequest& set_breakpoints_request);
