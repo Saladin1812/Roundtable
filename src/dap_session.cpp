@@ -482,6 +482,10 @@ std::string CDapDebugSession::buildContinueRequestMessage(int sequence_number, c
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"continue","arguments":{"threadId":)" + std::to_string(continue_request.thread_id) + "}}";
 }
 
+std::string CDapDebugSession::buildStepOverRequestMessage(int sequence_number, const SDapStepOverRequest& step_over_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"next","arguments":{"threadId":)" + std::to_string(step_over_request.thread_id) + "}}";
+}
+
 std::string CDapDebugSession::buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request) {
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"evaluate","arguments":{"expression":")" + evaluate_request.expression +
         R"(","frameId":)" + std::to_string(evaluate_request.frame_id) + R"(,"context":")" + evaluate_request.context + R"("}})";
@@ -921,6 +925,18 @@ SDapContinueResponse CDapDebugSession::parseContinueResponseMessage(const std::s
 
     if (response_message.find("\"success\":true") == std::string::npos) {
         response.error_message = "DAP continue response did not report success";
+        return response;
+    }
+
+    response.success = true;
+    return response;
+}
+
+SDapStepOverResponse CDapDebugSession::parseStepOverResponseMessage(const std::string& response_message) {
+    SDapStepOverResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP next response did not report success";
         return response;
     }
 
@@ -1471,6 +1487,46 @@ SDapContinueResponse CDapDebugSession::continueExecution(const SDapContinueReque
 
         if (message.type == "response" && message.command_name == "continue") {
             return parseContinueResponseMessage(response_message);
+        }
+    }
+}
+
+SDapStepOverResponse CDapDebugSession::stepOver(const SDapStepOverRequest& step_over_request) {
+    if (!isConnected()) {
+        return {
+            .success       = false,
+            .error_message = "DAP session is not connected",
+        };
+    }
+
+    std::string error_message;
+    const auto  request_message = buildStepOverRequestMessage(next_sequence_number_++, step_over_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        return {
+            .success       = false,
+            .error_message = error_message,
+        };
+    }
+
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            return {
+                .success       = false,
+                .error_message = error_message,
+            };
+        }
+
+        logDapMessage("dap next message: ", response_message);
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "event") {
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "next") {
+            return parseStepOverResponseMessage(response_message);
         }
     }
 }

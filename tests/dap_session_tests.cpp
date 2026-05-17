@@ -405,6 +405,24 @@ TEST_CASE("CDapDebugSession parses a continue response message") {
     CHECK(response.error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession builds a step over request message") {
+    const std::string request_message = CDapDebugSession::buildStepOverRequestMessage(16,
+                                                                                      {
+                                                                                          .thread_id = 13,
+                                                                                      });
+
+    CHECK(request_message.find("\"seq\":16") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"next\"") != std::string::npos);
+    CHECK(request_message.find("\"threadId\":13") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a step over response message") {
+    const SDapStepOverResponse response = CDapDebugSession::parseStepOverResponseMessage(R"({"success":true})");
+
+    REQUIRE(response.success);
+    CHECK(response.error_message.empty());
+}
+
 TEST_CASE("CDapDebugSession builds an evaluate request message") {
     const std::string request_message = CDapDebugSession::buildEvaluateRequestMessage(16,
                                                                                       {
@@ -683,6 +701,24 @@ TEST_CASE("CDapDebugSession continues execution from a continue response") {
 
     REQUIRE(continue_response.success);
     CHECK(continue_response.error_message.empty());
+}
+
+TEST_CASE("CDapDebugSession steps over from a next response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"continued","body":{"threadId":13}})",
+        R"({"type":"response","command":"next","success":true})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto step_response = dap_session.stepOver({
+        .thread_id = 13,
+    });
+
+    REQUIRE(step_response.success);
+    CHECK(step_response.error_message.empty());
 }
 
 TEST_CASE("CDapDebugSession evaluates an expression from an evaluate response") {

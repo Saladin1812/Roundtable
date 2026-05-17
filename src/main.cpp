@@ -934,6 +934,37 @@ int main(int argc, char** argv) {
         refreshAllPanes();
     };
 
+    const auto stepOverActiveDapSession = [&]() {
+        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
+        if (dap_session == nullptr) {
+            transient_status_message = "Step over is only available in DAP sessions";
+            return;
+        }
+        if (debug_selection.thread_id == 0) {
+            transient_status_message = "Step over failed: no active thread";
+            return;
+        }
+
+        const auto step_response = dap_session->stepOver({
+            .thread_id = static_cast<int>(debug_selection.thread_id),
+        });
+        if (!step_response.success) {
+            transient_status_message = "Step over failed: " + step_response.error_message;
+            return;
+        }
+
+        if (!dap_session->waitForStoppedEvent()) {
+            transient_status_message = "Wait after step over failed: " + dap_session->getLastError();
+            return;
+        }
+
+        updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+
+        memory_navigation_offset = 0;
+        transient_status_message = "Stopped after step over";
+        refreshAllPanes();
+    };
+
     refreshAllPanes();
 
     auto renderer = Renderer([&] {
@@ -1191,6 +1222,11 @@ int main(int argc, char** argv) {
             return true;
         }
 
+        if (event == Event::F10) {
+            stepOverActiveDapSession();
+            return true;
+        }
+
         if (view_visibility.show_shortcuts_overlay && (event == Event::Escape || event == Event::Character('?'))) {
             view_visibility.show_shortcuts_overlay = false;
             leader_pending                         = false;
@@ -1275,6 +1311,10 @@ int main(int argc, char** argv) {
                     }
                     if (command.value() == eCommand::CONTINUE_EXECUTION) {
                         continueActiveDapSession();
+                        return true;
+                    }
+                    if (command.value() == eCommand::STEP_OVER) {
+                        stepOverActiveDapSession();
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);
