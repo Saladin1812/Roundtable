@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -45,4 +46,5 @@ struct SAppConfig {
     std::vector<SKeybinding>             keybindings           = defaultKeybindings();
 };
 
-SAppConfig loadAppConfig(const std::string& config_path);
+SAppConfig                             loadAppConfig(const std::string& config_path);
+std::optional<SSourceBreakpointConfig> parseSourceBreakpointConfig(std::string value);

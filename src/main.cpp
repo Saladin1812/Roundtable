@@ -37,6 +37,7 @@ namespace {
         NONE,
         ADD_WATCH,
         EDIT_WATCH,
+        ADD_BREAKPOINT,
         MEMORY_TARGET,
     };
 
@@ -566,6 +567,10 @@ namespace {
                 title = " Edit Watch ";
                 hint  = "Update expression and press Return";
                 break;
+            case ePromptMode::ADD_BREAKPOINT:
+                title = " Add Breakpoint ";
+                hint  = "Enter source.cpp:line and press Return";
+                break;
             case ePromptMode::MEMORY_TARGET:
                 title = " Memory Target ";
                 hint  = "Enter address or expression, empty clears override";
@@ -880,6 +885,22 @@ int main(int argc, char** argv) {
         refreshAllPanes();
     };
 
+    const auto applyBreakpointsToActiveSession = [&]() {
+        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
+        if (dap_session == nullptr) {
+            transient_status_message = "Breakpoint queued for next DAP launch";
+            return;
+        }
+
+        std::string breakpoint_error_message;
+        if (!configureDapBreakpoints(*dap_session, app_config.breakpoints, breakpoint_error_message)) {
+            transient_status_message = breakpoint_error_message;
+            return;
+        }
+
+        transient_status_message = "Breakpoint applied";
+    };
+
     refreshAllPanes();
 
     auto renderer = Renderer([&] {
@@ -965,6 +986,14 @@ int main(int argc, char** argv) {
                         watch_expressions[watch_list_pane.selected_index].expression = prompt_state.input;
                         focused_pane                                                 = eFocusPane::WATCH_LIST;
                         memory_navigation_offset                                     = 0;
+                    }
+                } else if (prompt_state.mode == ePromptMode::ADD_BREAKPOINT) {
+                    const auto breakpoint = parseSourceBreakpointConfig(prompt_state.input);
+                    if (breakpoint.has_value()) {
+                        app_config.breakpoints.push_back(breakpoint.value());
+                        applyBreakpointsToActiveSession();
+                    } else {
+                        transient_status_message = "Invalid breakpoint, expected source.cpp:line";
                     }
                 } else if (prompt_state.mode == ePromptMode::MEMORY_TARGET) {
                     manual_memory_target     = prompt_state.input;
@@ -1183,6 +1212,10 @@ int main(int argc, char** argv) {
                             memory_navigation_offset = 0;
                             refreshAllPanes();
                         }
+                        return true;
+                    }
+                    if (command.value() == eCommand::ADD_BREAKPOINT) {
+                        prompt_state = beginPrompt(ePromptMode::ADD_BREAKPOINT);
                         return true;
                     }
                     if (command.value() == eCommand::SET_MEMORY_TARGET) {

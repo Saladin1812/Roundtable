@@ -124,33 +124,6 @@ namespace {
         return items;
     }
 
-    std::optional<SSourceBreakpointConfig> parseSourceBreakpoint(std::string value) {
-        value                         = unquote(trim(std::move(value)));
-        const auto separator_position = value.rfind(':');
-        if (separator_position == std::string::npos || separator_position + 1 >= value.size()) {
-            return std::nullopt;
-        }
-
-        const auto source_path = trim(value.substr(0, separator_position));
-        const auto line_text   = trim(value.substr(separator_position + 1));
-        if (source_path.empty() || line_text.empty()) {
-            return std::nullopt;
-        }
-
-        std::int64_t line   = 0;
-        const auto*  begin  = line_text.data();
-        const auto*  end    = begin + line_text.size();
-        const auto   result = std::from_chars(begin, end, line);
-        if (result.ec != std::errc{} || result.ptr != end || line <= 0) {
-            return std::nullopt;
-        }
-
-        return SSourceBreakpointConfig{
-            .source_path = std::filesystem::path(source_path),
-            .line        = line,
-        };
-    }
-
     void assignThemeOverride(SThemeOverrides& overrides, const std::string& key, const std::string& value) {
         const auto parsed_color = parseHexColor(value);
         if (!parsed_color.has_value()) {
@@ -245,6 +218,33 @@ namespace {
 
 } // namespace
 
+std::optional<SSourceBreakpointConfig> parseSourceBreakpointConfig(std::string value) {
+    value                         = unquote(trim(std::move(value)));
+    const auto separator_position = value.rfind(':');
+    if (separator_position == std::string::npos || separator_position + 1 >= value.size()) {
+        return std::nullopt;
+    }
+
+    const auto source_path = trim(value.substr(0, separator_position));
+    const auto line_text   = trim(value.substr(separator_position + 1));
+    if (source_path.empty() || line_text.empty()) {
+        return std::nullopt;
+    }
+
+    std::int64_t line   = 0;
+    const auto*  begin  = line_text.data();
+    const auto*  end    = begin + line_text.size();
+    const auto   result = std::from_chars(begin, end, line);
+    if (result.ec != std::errc{} || result.ptr != end || line <= 0) {
+        return std::nullopt;
+    }
+
+    return SSourceBreakpointConfig{
+        .source_path = std::filesystem::path(source_path),
+        .line        = line,
+    };
+}
+
 SAppConfig loadAppConfig(const std::string& config_path) {
     SAppConfig    config = {};
     std::ifstream config_stream(config_path);
@@ -331,7 +331,7 @@ SAppConfig loadAppConfig(const std::string& config_path) {
             if (key == "entries") {
                 config.breakpoints.clear();
                 for (const auto& item : parseStringArray(value)) {
-                    const auto parsed_breakpoint = parseSourceBreakpoint(item);
+                    const auto parsed_breakpoint = parseSourceBreakpointConfig(item);
                     if (parsed_breakpoint.has_value()) {
                         config.breakpoints.push_back(parsed_breakpoint.value());
                     }
