@@ -58,6 +58,8 @@ TEST_CASE("parseCommandName returns commands for known names") {
     CHECK(parseCommandName("continue_execution").value() == eCommand::CONTINUE_EXECUTION);
     REQUIRE(parseCommandName("step_over").has_value());
     CHECK(parseCommandName("step_over").value() == eCommand::STEP_OVER);
+    REQUIRE(parseCommandName("step_into").has_value());
+    CHECK(parseCommandName("step_into").value() == eCommand::STEP_INTO);
     REQUIRE(parseCommandName("cycle_theme").has_value());
     CHECK(parseCommandName("cycle_theme").value() == eCommand::CYCLE_THEME);
     REQUIRE(parseCommandName("reload_config").has_value());
