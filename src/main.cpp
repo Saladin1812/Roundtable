@@ -146,43 +146,10 @@ namespace {
         return true;
     }
 
-    bool finalizeDapSessionStop(CDapDebugSession& dap_session, bool continue_once, SDebugSelection& selection, std::uint64_t& disassembly_start_address,
-                                std::string& disassembly_memory_reference, std::string& error_message, const std::string& continue_failure_prefix,
-                                const std::string& wait_after_continue_prefix) {
-        if (!dap_session.configurationDone()) {
-            error_message = "DAP configurationDone failed: " + dap_session.getLastError();
-            return false;
-        }
-
-        if (!dap_session.waitForStoppedEvent()) {
-            error_message = "DAP waitForStoppedEvent failed: " + dap_session.getLastError();
-            return false;
-        }
-
+    void updateDapStoppedContext(CDapDebugSession& dap_session, SDebugSelection& selection, std::uint64_t& disassembly_start_address, std::string& disassembly_memory_reference) {
         auto threads = dap_session.getThreads();
         if (threads.success && !threads.threads.empty()) {
             selection.thread_id = threads.threads.front().id;
-        }
-
-        if (continue_once && selection.thread_id != 0) {
-            const auto continue_response = dap_session.continueExecution({
-                .thread_id = static_cast<int>(selection.thread_id),
-            });
-
-            if (!continue_response.success) {
-                error_message = continue_failure_prefix + continue_response.error_message;
-                return false;
-            }
-
-            if (!dap_session.waitForStoppedEvent()) {
-                error_message = wait_after_continue_prefix + dap_session.getLastError();
-                return false;
-            }
-
-            threads = dap_session.getThreads();
-            if (threads.success && !threads.threads.empty()) {
-                selection.thread_id = threads.threads.front().id;
-            }
         }
 
         disassembly_start_address = 0x401000;
@@ -208,6 +175,40 @@ namespace {
                     } catch (const std::exception&) { disassembly_start_address = 0x401000; }
                 }
             }
+        }
+    }
+
+    bool finalizeDapSessionStop(CDapDebugSession& dap_session, bool continue_once, SDebugSelection& selection, std::uint64_t& disassembly_start_address,
+                                std::string& disassembly_memory_reference, std::string& error_message, const std::string& continue_failure_prefix,
+                                const std::string& wait_after_continue_prefix) {
+        if (!dap_session.configurationDone()) {
+            error_message = "DAP configurationDone failed: " + dap_session.getLastError();
+            return false;
+        }
+
+        if (!dap_session.waitForStoppedEvent()) {
+            error_message = "DAP waitForStoppedEvent failed: " + dap_session.getLastError();
+            return false;
+        }
+
+        updateDapStoppedContext(dap_session, selection, disassembly_start_address, disassembly_memory_reference);
+
+        if (continue_once && selection.thread_id != 0) {
+            const auto continue_response = dap_session.continueExecution({
+                .thread_id = static_cast<int>(selection.thread_id),
+            });
+
+            if (!continue_response.success) {
+                error_message = continue_failure_prefix + continue_response.error_message;
+                return false;
+            }
+
+            if (!dap_session.waitForStoppedEvent()) {
+                error_message = wait_after_continue_prefix + dap_session.getLastError();
+                return false;
+            }
+
+            updateDapStoppedContext(dap_session, selection, disassembly_start_address, disassembly_memory_reference);
         }
 
         return true;
@@ -539,6 +540,7 @@ namespace {
             separator(),
             text("Tab  Cycle focus") | color(theme.chrome),
             text("r  Refresh panes") | color(theme.chrome),
+            text("F5  Continue") | color(theme.chrome),
             text("q  Quit") | color(theme.chrome),
         };
 
@@ -901,6 +903,37 @@ int main(int argc, char** argv) {
         transient_status_message = "Breakpoint applied";
     };
 
+    const auto continueActiveDapSession = [&]() {
+        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
+        if (dap_session == nullptr) {
+            transient_status_message = "Continue is only available in DAP sessions";
+            return;
+        }
+        if (debug_selection.thread_id == 0) {
+            transient_status_message = "Continue failed: no active thread";
+            return;
+        }
+
+        const auto continue_response = dap_session->continueExecution({
+            .thread_id = static_cast<int>(debug_selection.thread_id),
+        });
+        if (!continue_response.success) {
+            transient_status_message = "Continue failed: " + continue_response.error_message;
+            return;
+        }
+
+        if (!dap_session->waitForStoppedEvent()) {
+            transient_status_message = "Wait after continue failed: " + dap_session->getLastError();
+            return;
+        }
+
+        updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+
+        memory_navigation_offset = 0;
+        transient_status_message = "Stopped after continue";
+        refreshAllPanes();
+    };
+
     refreshAllPanes();
 
     auto renderer = Renderer([&] {
@@ -1153,6 +1186,11 @@ int main(int argc, char** argv) {
             return true;
         }
 
+        if (event == Event::F5) {
+            continueActiveDapSession();
+            return true;
+        }
+
         if (view_visibility.show_shortcuts_overlay && (event == Event::Escape || event == Event::Character('?'))) {
             view_visibility.show_shortcuts_overlay = false;
             leader_pending                         = false;
@@ -1233,6 +1271,10 @@ int main(int argc, char** argv) {
                     }
                     if (command.value() == eCommand::RELOAD_CONFIG) {
                         reloadConfig();
+                        return true;
+                    }
+                    if (command.value() == eCommand::CONTINUE_EXECUTION) {
+                        continueActiveDapSession();
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);

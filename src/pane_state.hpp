@@ -24,6 +24,7 @@ enum class eCommand : std::uint8_t {
     REMOVE_WATCH,
     ADD_BREAKPOINT,
     SET_MEMORY_TARGET,
+    CONTINUE_EXECUTION,
     CYCLE_THEME,
     RELOAD_CONFIG,
     TOGGLE_MEMORY,
