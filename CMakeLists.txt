@@ -125,6 +125,7 @@ if(BUILD_TESTING)
     src/codelldb_locator.cpp
     src/cli_options.cpp
     src/dap_session.cpp
+    src/debugger_controller.cpp
     src/debug_session.cpp
     src/memory_selection.cpp
     src/memory_view.cpp
