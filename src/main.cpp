@@ -105,6 +105,39 @@ namespace {
         return 0;
     }
 
+    std::string compactPathForStatus(std::string source_path) {
+        if (source_path.empty()) {
+            return "<unknown>";
+        }
+
+        const auto last_separator = source_path.find_last_of("/\\");
+        if (last_separator == std::string::npos) {
+            return source_path;
+        }
+
+        return source_path.substr(last_separator + 1);
+    }
+
+    std::string formatStoppedLocation(const SStoppedLocation& stopped_location) {
+        if (stopped_location.function_name.empty() && stopped_location.source_path.empty() && stopped_location.line == 0) {
+            return {};
+        }
+
+        std::string location = " " + compactPathForStatus(stopped_location.source_path);
+        if (stopped_location.line > 0) {
+            location += ":" + std::to_string(stopped_location.line);
+            if (stopped_location.column > 0) {
+                location += ":" + std::to_string(stopped_location.column);
+            }
+        }
+
+        if (!stopped_location.function_name.empty()) {
+            location += " " + stopped_location.function_name + "()";
+        }
+
+        return location + " ";
+    }
+
     struct SLeaderHintRow {
         std::string keys;
         std::string description;
@@ -588,6 +621,7 @@ int main(int argc, char** argv) {
     SDebugSelection                debug_selection              = bootstrap_result.selection;
     std::uint64_t                  disassembly_start_address    = bootstrap_result.disassembly_start_address;
     std::string                    disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
+    SStoppedLocation               stopped_location             = bootstrap_result.stopped_location;
     eDebuggerSessionState          session_state                = bootstrap_result.state;
     std::string                    base_session_status          = bootstrap_result.status_message;
     std::string                    transient_status_message     = {};
@@ -651,6 +685,7 @@ int main(int argc, char** argv) {
         watch_list_pane.selected_index  = 0;
         memory_target_label             = {};
         memory_context                  = {};
+        stopped_location                = {};
     };
 
     const auto isSessionTerminated = [&] { return session_state == eDebuggerSessionState::TERMINATED; };
@@ -691,6 +726,7 @@ int main(int argc, char** argv) {
         debug_selection              = bootstrap_result.selection;
         disassembly_start_address    = bootstrap_result.disassembly_start_address;
         disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
+        stopped_location             = bootstrap_result.stopped_location;
         session_state                = bootstrap_result.state;
         base_session_status          = bootstrap_result.status_message;
         transient_status_message     = std::move(status_message);
@@ -815,7 +851,7 @@ int main(int argc, char** argv) {
                     return;
                 }
 
-                updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+                stopped_location = updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
 
                 const std::string completed_action_name = async_dap_control_state.pause_requested.exchange(false) ? "pause" : stopped_action_name;
                 async_dap_control_state.quit_requested.store(false);
@@ -1021,23 +1057,30 @@ int main(int argc, char** argv) {
 
     auto renderer = Renderer([&] {
         const std::string current_status  = transient_status_message.empty() ? base_session_status : transient_status_message;
+        const std::string stopped_at      = formatStoppedLocation(stopped_location);
         Element           locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
         Element           watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
         Element           auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme, memory_context);
 
-        Elements          status_items = {
+        Elements          runtime_status_items = {
             text(" Roundtable ") | bgcolor(app_theme.selected_background) | color(app_theme.selected_foreground),
             separator(),
             text(" " + current_status + " ") | color(app_theme.chrome),
             separator(),
-            text(" Tab cycle ") | color(app_theme.chrome),
-            separator(),
-            text(" r refresh ") | color(app_theme.chrome),
-            separator(),
-            text(" Space commands ") | color(app_theme.accent),
-            separator(),
-            text(" q quit ") | color(app_theme.chrome),
+            text(stopped_at.empty() ? " location n/a " : stopped_at) | color(app_theme.chrome),
         };
+
+        Elements command_status_items = {
+            text(" Tab cycle ") | color(app_theme.chrome),      separator(), text(" r refresh ") | color(app_theme.chrome), separator(),
+            text(" Space commands ") | color(app_theme.accent), separator(), text(" q quit ") | color(app_theme.chrome),
+        };
+
+        Element status_bar = vbox({
+                                 hbox(runtime_status_items),
+                                 separator(),
+                                 hbox(command_status_items),
+                             }) |
+            border | color(app_theme.chrome);
 
         Element content = vbox({
             hbox({
@@ -1045,7 +1088,7 @@ int main(int argc, char** argv) {
                 auxiliary_views | flex,
                 watch_list | size(WIDTH, EQUAL, 28),
             }) | flex,
-            hbox(status_items) | border | color(app_theme.chrome),
+            status_bar,
         });
 
         if (view_visibility.show_shortcuts_overlay) {
