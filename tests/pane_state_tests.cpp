@@ -66,6 +66,8 @@ TEST_CASE("parseCommandName returns commands for known names") {
     CHECK(parseCommandName("pause_execution").value() == eCommand::PAUSE_EXECUTION);
     REQUIRE(parseCommandName("terminate_session").has_value());
     CHECK(parseCommandName("terminate_session").value() == eCommand::TERMINATE_SESSION);
+    REQUIRE(parseCommandName("restart_session").has_value());
+    CHECK(parseCommandName("restart_session").value() == eCommand::RESTART_SESSION);
     REQUIRE(parseCommandName("cycle_theme").has_value());
     CHECK(parseCommandName("cycle_theme").value() == eCommand::CYCLE_THEME);
     REQUIRE(parseCommandName("reload_config").has_value());

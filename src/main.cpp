@@ -685,6 +685,18 @@ int main(int argc, char** argv) {
         refreshPaneRows(inputs, outputs);
     };
 
+    const auto applyBootstrapResult = [&](SSessionBootstrapResult new_bootstrap_result, std::string status_message) {
+        bootstrap_result             = std::move(new_bootstrap_result);
+        debug_session                = std::move(bootstrap_result.session);
+        debug_selection              = bootstrap_result.selection;
+        disassembly_start_address    = bootstrap_result.disassembly_start_address;
+        disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
+        session_state                = bootstrap_result.state;
+        base_session_status          = bootstrap_result.status_message;
+        transient_status_message     = std::move(status_message);
+        memory_navigation_offset     = 0;
+    };
+
     const auto reloadConfig = [&] {
         if (isDapControlRunning()) {
             transient_status_message = "Config reload is disabled while debugger is running";
@@ -705,15 +717,7 @@ int main(int argc, char** argv) {
             .selected_index  = themePresetIndex(active_theme_preset),
         };
 
-        bootstrap_result             = bootstrapSession(app_config);
-        debug_session                = std::move(bootstrap_result.session);
-        debug_selection              = bootstrap_result.selection;
-        disassembly_start_address    = bootstrap_result.disassembly_start_address;
-        disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
-        session_state                = bootstrap_result.state;
-        base_session_status          = bootstrap_result.status_message;
-        transient_status_message     = "Config reloaded";
-        memory_navigation_offset     = 0;
+        applyBootstrapResult(bootstrapSession(app_config), "Config reloaded");
 
         refreshAllPanes();
     };
@@ -975,6 +979,42 @@ int main(int argc, char** argv) {
         }
 
         screen.Exit();
+    };
+
+    const auto restartSession = [&]() {
+        if (isDapControlRunning() || session_state == eDebuggerSessionState::RUNNING || session_state == eDebuggerSessionState::TERMINATING) {
+            transient_status_message = "Restart is unavailable while debugger is running";
+            return;
+        }
+
+        if (app_config.session_mode == eSessionMode::MOCK) {
+            applyBootstrapResult(bootstrapSession(app_config), "Mock session restarted");
+            refreshAllPanes();
+            return;
+        }
+
+        if (session_state == eDebuggerSessionState::STOPPED) {
+            auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
+            if (dap_session != nullptr) {
+                if (!dap_session->sendDisconnectRequest({.terminate_debuggee = true})) {
+                    session_state            = eDebuggerSessionState::ERROR;
+                    transient_status_message = "Restart failed: " + dap_session->getLastError();
+                    return;
+                }
+
+                if (!dap_session->waitForTerminatedEvent()) {
+                    session_state            = eDebuggerSessionState::ERROR;
+                    transient_status_message = "Restart failed while stopping current session: " + dap_session->getLastError();
+                    return;
+                }
+            }
+        }
+
+        applyBootstrapResult(bootstrapSession(app_config), "Session restarted");
+        if (session_state == eDebuggerSessionState::ERROR) {
+            transient_status_message = "Restart failed: " + base_session_status;
+        }
+        refreshAllPanes();
     };
 
     refreshAllPanes();
@@ -1357,6 +1397,10 @@ int main(int argc, char** argv) {
                     }
                     if (command.value() == eCommand::TERMINATE_SESSION) {
                         terminateActiveDapSession();
+                        return true;
+                    }
+                    if (command.value() == eCommand::RESTART_SESSION) {
+                        restartSession();
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);
