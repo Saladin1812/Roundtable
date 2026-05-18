@@ -1113,13 +1113,13 @@ std::string CDapDebugSession::buildLaunchRequestMessage(int sequence_number, con
         if (i > 0) {
             arguments_json += ",";
         }
-        arguments_json += "\"" + launch_request.arguments[i] + "\"";
+        arguments_json += "\"" + jsonEscape(launch_request.arguments[i]) + "\"";
     }
     arguments_json += "]";
 
-    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"launch","arguments":{"program":")" + launch_request.program + R"(","args":)" +
-        arguments_json + R"(,"cwd":")" + launch_request.working_directory + R"(","stopOnEntry":)" + std::string(launch_request.stop_on_entry ? "true" : "false") +
-        R"(,"terminal":"console"}})";
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"launch","arguments":{"program":")" + jsonEscape(launch_request.program) +
+        R"(","args":)" + arguments_json + R"(,"cwd":")" + jsonEscape(launch_request.working_directory) + R"(","stopOnEntry":)" +
+        std::string(launch_request.stop_on_entry ? "true" : "false") + R"(,"terminal":"console"}})";
 }
 
 std::string CDapDebugSession::buildAttachRequestMessage(int sequence_number, const SDapAttachRequest& attach_request) {

@@ -15,12 +15,13 @@ enum class eSessionMode : std::uint8_t {
 };
 
 struct SDapLaunchConfig {
-    std::string command;
-    std::string liblldb_path;
-    std::string program;
-    std::string working_directory = ".";
-    bool        stop_on_entry     = true;
-    bool        continue_once     = false;
+    std::string              command;
+    std::string              liblldb_path;
+    std::string              program;
+    std::vector<std::string> arguments;
+    std::string              working_directory = ".";
+    bool                     stop_on_entry     = true;
+    bool                     continue_once     = false;
 };
 
 struct SSourceBreakpointConfig {
@@ -42,6 +43,7 @@ struct SAppConfig {
     SThemeOverrides                      theme_overrides       = {};
     SDapLaunchConfig                     dap_launch            = {};
     std::vector<SSourceBreakpointConfig> breakpoints           = {};
+    std::vector<std::string>             watches               = {};
     SCodeLldbAutoDetectConfig            codelldb_auto_detect  = {};
     std::vector<SKeybinding>             keybindings           = defaultKeybindings();
 };

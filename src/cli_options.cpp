@@ -1,5 +1,7 @@
 #include "cli_options.hpp"
 
+#include <string_view>
+
 SCliOptions parseCliOptions(int argc, char** argv) {
     SCliOptions options = {};
 
@@ -7,6 +9,20 @@ SCliOptions parseCliOptions(int argc, char** argv) {
         const std::string argument = argv[argument_index];
         if (argument == "--help" || argument == "-h") {
             options.show_help = true;
+            continue;
+        }
+
+        if (argument == "--config" || argument == "-c") {
+            if (argument_index + 1 < argc) {
+                ++argument_index;
+                options.config_path = std::filesystem::path(argv[argument_index]);
+            }
+            continue;
+        }
+
+        constexpr std::string_view config_prefix = "--config=";
+        if (argument.starts_with(config_prefix)) {
+            options.config_path = std::filesystem::path(argument.substr(config_prefix.size()));
             continue;
         }
 

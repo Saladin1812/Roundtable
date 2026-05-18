@@ -567,6 +567,20 @@ TEST_CASE("CDapDebugSession builds a launch request message") {
     CHECK(request_message.find("\"stopOnEntry\":true") != std::string::npos);
 }
 
+TEST_CASE("CDapDebugSession escapes launch request strings") {
+    const std::string request_message = CDapDebugSession::buildLaunchRequestMessage(9,
+                                                                                    {
+                                                                                        .program           = R"(/tmp/program"quoted")",
+                                                                                        .arguments         = {R"(arg"1)", R"(path\value)"},
+                                                                                        .working_directory = R"(/tmp/work"dir")",
+                                                                                        .stop_on_entry     = true,
+                                                                                    });
+
+    CHECK(request_message.find(R"("program":"/tmp/program\"quoted\"")") != std::string::npos);
+    CHECK(request_message.find(R"("args":["arg\"1","path\\value"])") != std::string::npos);
+    CHECK(request_message.find(R"("cwd":"/tmp/work\"dir\"")") != std::string::npos);
+}
+
 TEST_CASE("CDapDebugSession builds an attach request message") {
     const std::string request_message = CDapDebugSession::buildAttachRequestMessage(11,
                                                                                     {

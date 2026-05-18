@@ -640,13 +640,15 @@ int main(int argc, char** argv) {
 
     const SCliOptions cli_options = parseCliOptions(argc, argv);
     if (cli_options.show_help) {
-        std::cout << "Usage: roundtable [program-path]\n";
-        std::cout << "  roundtable                Start with roundtable.toml / defaults\n";
-        std::cout << "  roundtable ./mybinary     Force dap_launch for the given binary\n";
+        std::cout << "Usage: roundtable [--config path] [program-path]\n";
+        std::cout << "  roundtable                         Start with roundtable.toml / defaults\n";
+        std::cout << "  roundtable --config /tmp/rt.toml   Start with an explicit config file\n";
+        std::cout << "  roundtable ./mybinary              Force dap_launch for the given binary\n";
         return 0;
     }
 
-    SAppConfig app_config = loadAppConfig("roundtable.toml");
+    const std::string config_path = cli_options.config_path.string();
+    SAppConfig        app_config  = loadAppConfig(config_path);
     applyCliOverrides(cli_options, app_config);
     const auto                     buildActiveTheme             = [&](eThemePreset preset) { return applyThemeOverrides(buildTheme(preset), app_config.theme_overrides); };
     eThemePreset                   active_theme_preset          = app_config.theme_preset;
@@ -666,18 +668,32 @@ int main(int argc, char** argv) {
                                .show_memory_view      = app_config.show_memory_view,
                                .show_disassembly_view = app_config.show_disassembly_view,
     };
-    eFocusPane                    focused_pane         = normalizeFocusedPane(app_config.startup_focus, view_visibility);
-    std::vector<SKeybinding>      keybindings          = app_config.keybindings;
-    bool                          leader_pending       = false;
-    std::vector<SWatchExpression> watch_expressions    = app_config.session_mode == eSessionMode::MOCK ?
-           std::vector<SWatchExpression>{
-            {.expression = "a"},
-            {.expression = "ptr"},
-        } :
-           std::vector<SWatchExpression>{
+    eFocusPane               focused_pane                 = normalizeFocusedPane(app_config.startup_focus, view_visibility);
+    std::vector<SKeybinding> keybindings                  = app_config.keybindings;
+    bool                     leader_pending               = false;
+    const auto               buildInitialWatchExpressions = [](const SAppConfig& config) {
+        if (!config.watches.empty()) {
+            std::vector<SWatchExpression> configured_watches;
+            configured_watches.reserve(config.watches.size());
+            for (const auto& watch : config.watches) {
+                configured_watches.push_back({.expression = watch});
+            }
+            return configured_watches;
+        }
+
+        if (config.session_mode == eSessionMode::MOCK) {
+            return std::vector<SWatchExpression>{
+                {.expression = "a"},
+                {.expression = "ptr"},
+            };
+        }
+
+        return std::vector<SWatchExpression>{
             {.expression = "sample_value"},
             {.expression = "sample_bytes"},
         };
+    };
+    std::vector<SWatchExpression> watch_expressions    = buildInitialWatchExpressions(app_config);
     std::string                   manual_memory_target = {};
     SPromptState                  prompt_state         = {};
     SThemePickerState             theme_picker_state   = {
@@ -784,8 +800,10 @@ int main(int argc, char** argv) {
             return;
         }
 
-        app_config                            = loadAppConfig("roundtable.toml");
+        app_config = loadAppConfig(config_path);
+        applyCliOverrides(cli_options, app_config);
         keybindings                           = app_config.keybindings;
+        watch_expressions                     = buildInitialWatchExpressions(app_config);
         active_theme_preset                   = app_config.theme_preset;
         app_theme                             = buildActiveTheme(active_theme_preset);
         view_visibility.show_memory_view      = app_config.show_memory_view;

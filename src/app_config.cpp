@@ -320,6 +320,8 @@ SAppConfig loadAppConfig(const std::string& config_path) {
                 config.dap_launch.liblldb_path = unquote(value);
             } else if (key == "program") {
                 config.dap_launch.program = unquote(value);
+            } else if (key == "arguments") {
+                config.dap_launch.arguments = parseStringArray(value);
             } else if (key == "working_directory") {
                 config.dap_launch.working_directory = unquote(value);
             } else if (key == "stop_on_entry") {
@@ -339,6 +341,13 @@ SAppConfig loadAppConfig(const std::string& config_path) {
                         config.breakpoints.push_back(parsed_breakpoint.value());
                     }
                 }
+            }
+            continue;
+        }
+
+        if (current_section == "watches") {
+            if (key == "entries") {
+                config.watches = parseStringArray(value);
             }
             continue;
         }

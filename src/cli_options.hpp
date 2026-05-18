@@ -6,7 +6,8 @@
 #include "app_config.hpp"
 
 struct SCliOptions {
-    bool                                 show_help = false;
+    bool                                 show_help   = false;
+    std::filesystem::path                config_path = "roundtable.toml";
     std::optional<std::filesystem::path> launch_program;
 };
 

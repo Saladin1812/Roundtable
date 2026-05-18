@@ -46,6 +46,7 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "command = \"/tmp/codelldb\"\n";
         config_stream << "liblldb_path = \"/tmp/liblldb.so\"\n";
         config_stream << "program = \"/tmp/sample\"\n";
+        config_stream << "arguments = [\"--flag\", \"value\"]\n";
         config_stream << "working_directory = \"/tmp\"\n";
         config_stream << "stop_on_entry = false\n";
         config_stream << "continue_once = true\n";
@@ -55,6 +56,9 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "  \"src/main.cpp:42\",\n";
         config_stream << "  \"/tmp/sample.cpp:7\",\n";
         config_stream << "]\n";
+        config_stream << "\n";
+        config_stream << "[watches]\n";
+        config_stream << "entries = [\"sample_value\", \"ptr->field\"]\n";
         config_stream << "\n";
         config_stream << "[keybindings]\n";
         config_stream << "focus_memory = \"Space x\"\n";
@@ -88,6 +92,9 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     CHECK(config.dap_launch.command == "/tmp/codelldb");
     CHECK(config.dap_launch.liblldb_path == "/tmp/liblldb.so");
     CHECK(config.dap_launch.program == "/tmp/sample");
+    REQUIRE(config.dap_launch.arguments.size() == 2);
+    CHECK(config.dap_launch.arguments[0] == "--flag");
+    CHECK(config.dap_launch.arguments[1] == "value");
     CHECK(config.dap_launch.working_directory == "/tmp");
     CHECK_FALSE(config.dap_launch.stop_on_entry);
     CHECK(config.dap_launch.continue_once);
@@ -96,6 +103,9 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     CHECK(config.breakpoints[0].line == 42);
     CHECK(config.breakpoints[1].source_path == std::filesystem::path("/tmp/sample.cpp"));
     CHECK(config.breakpoints[1].line == 7);
+    REQUIRE(config.watches.size() == 2);
+    CHECK(config.watches[0] == "sample_value");
+    CHECK(config.watches[1] == "ptr->field");
 
     const auto memory_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_MEMORY; });
     REQUIRE(memory_keybinding != config.keybindings.end());

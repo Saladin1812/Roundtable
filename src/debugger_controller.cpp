@@ -209,7 +209,7 @@ SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
 
     if (!dap_session->launch({
             .program           = app_config.dap_launch.program,
-            .arguments         = {},
+            .arguments         = app_config.dap_launch.arguments,
             .working_directory = app_config.dap_launch.working_directory,
             .stop_on_entry     = app_config.dap_launch.stop_on_entry,
         })) {
