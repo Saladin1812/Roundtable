@@ -405,6 +405,38 @@ TEST_CASE("CDapDebugSession parses a continue response message") {
     CHECK(response.error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession builds a terminate request message") {
+    const std::string request_message = CDapDebugSession::buildTerminateRequestMessage(16);
+
+    CHECK(request_message.find("\"seq\":16") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"terminate\"") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a terminate response message") {
+    const SDapTerminateResponse response = CDapDebugSession::parseTerminateResponseMessage(R"({"type":"response","command":"terminate","success":true})");
+
+    REQUIRE(response.success);
+    CHECK(response.error_message.empty());
+}
+
+TEST_CASE("CDapDebugSession builds a disconnect request message") {
+    const std::string request_message = CDapDebugSession::buildDisconnectRequestMessage(17,
+                                                                                        {
+                                                                                            .terminate_debuggee = true,
+                                                                                        });
+
+    CHECK(request_message.find("\"seq\":17") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"disconnect\"") != std::string::npos);
+    CHECK(request_message.find("\"terminateDebuggee\":true") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a disconnect response message") {
+    const SDapDisconnectResponse response = CDapDebugSession::parseDisconnectResponseMessage(R"({"type":"response","command":"disconnect","success":true})");
+
+    REQUIRE(response.success);
+    CHECK(response.error_message.empty());
+}
+
 TEST_CASE("CDapDebugSession builds a step over request message") {
     const std::string request_message = CDapDebugSession::buildStepOverRequestMessage(16,
                                                                                       {
@@ -646,6 +678,31 @@ TEST_CASE("CDapDebugSession stops waiting when the session terminates") {
     CHECK(dap_session.getLastError() == "DAP session ended before a stopped event");
 }
 
+TEST_CASE("CDapDebugSession waits for a terminated event") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"terminate","success":true})",
+        R"({"type":"event","event":"terminated"})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.waitForTerminatedEvent());
+}
+
+TEST_CASE("CDapDebugSession treats a successful disconnect response as session end") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"disconnect","success":true})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.waitForTerminatedEvent());
+}
+
 TEST_CASE("CDapDebugSession sends configurationDone without waiting for later responses") {
     auto             transport = std::make_unique<CStubDapTransport>(true);
 
@@ -653,6 +710,29 @@ TEST_CASE("CDapDebugSession sends configurationDone without waiting for later re
 
     REQUIRE(dap_session.connect());
     REQUIRE(dap_session.sendConfigurationDoneRequest());
+}
+
+TEST_CASE("CDapDebugSession sends terminate without waiting for a response") {
+    auto             transport          = std::make_unique<CStubDapTransport>(true);
+    auto*            transport_observer = transport.get();
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.sendTerminateRequest());
+    CHECK(transport_observer->getLastSentMessage().find("\"command\":\"terminate\"") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession sends disconnect without waiting for a response") {
+    auto             transport          = std::make_unique<CStubDapTransport>(true);
+    auto*            transport_observer = transport.get();
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.sendDisconnectRequest({.terminate_debuggee = true}));
+    CHECK(transport_observer->getLastSentMessage().find("\"command\":\"disconnect\"") != std::string::npos);
+    CHECK(transport_observer->getLastSentMessage().find("\"terminateDebuggee\":true") != std::string::npos);
 }
 
 TEST_CASE("CDapDebugSession attaches after receiving initialized event") {

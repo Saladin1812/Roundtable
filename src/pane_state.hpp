@@ -29,6 +29,7 @@ enum class eCommand : std::uint8_t {
     STEP_INTO,
     STEP_OUT,
     PAUSE_EXECUTION,
+    TERMINATE_SESSION,
     CYCLE_THEME,
     RELOAD_CONFIG,
     TOGGLE_MEMORY,

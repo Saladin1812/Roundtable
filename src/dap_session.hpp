@@ -162,6 +162,20 @@ struct SDapPauseResponse {
     std::string error_message;
 };
 
+struct SDapTerminateResponse {
+    bool        success = false;
+    std::string error_message;
+};
+
+struct SDapDisconnectRequest {
+    bool terminate_debuggee = true;
+};
+
+struct SDapDisconnectResponse {
+    bool        success = false;
+    std::string error_message;
+};
+
 struct SDapEvaluateRequest {
     std::string expression;
     int         frame_id = 0;
@@ -305,6 +319,10 @@ class CDapDebugSession : public IDebugSession {
     static SDapStepOutResponse           parseStepOutResponseMessage(const std::string& response_message);
     static std::string                   buildPauseRequestMessage(int sequence_number, const SDapPauseRequest& pause_request);
     static SDapPauseResponse             parsePauseResponseMessage(const std::string& response_message);
+    static std::string                   buildTerminateRequestMessage(int sequence_number);
+    static SDapTerminateResponse         parseTerminateResponseMessage(const std::string& response_message);
+    static std::string                   buildDisconnectRequestMessage(int sequence_number, const SDapDisconnectRequest& disconnect_request);
+    static SDapDisconnectResponse        parseDisconnectResponseMessage(const std::string& response_message);
     static std::string                   buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request);
     static SDapEvaluateResponse          parseEvaluateResponseMessage(const std::string& response_message);
     static std::string                   buildDisassembleRequestMessage(int sequence_number, const SDapDisassembleRequest& disassemble_request);
@@ -323,6 +341,7 @@ class CDapDebugSession : public IDebugSession {
     bool                                 configurationDone();
     bool                                 sendConfigurationDoneRequest();
     bool                                 waitForStoppedEvent();
+    bool                                 waitForTerminatedEvent();
     SDapThreadsResponse                  getThreads();
     SDapStackTraceResponse               getStackTrace(const SDapStackTraceRequest& stack_trace_request);
     SDapScopesResponse                   getScopes(const SDapScopesRequest& scopes_request);
@@ -336,6 +355,8 @@ class CDapDebugSession : public IDebugSession {
     SDapStepIntoResponse                 stepInto(const SDapStepIntoRequest& step_into_request);
     SDapStepOutResponse                  stepOut(const SDapStepOutRequest& step_out_request);
     bool                                 sendPauseRequest(const SDapPauseRequest& pause_request);
+    bool                                 sendTerminateRequest();
+    bool                                 sendDisconnectRequest(const SDapDisconnectRequest& disconnect_request);
     SDapEvaluateResponse                 evaluate(const SDapEvaluateRequest& evaluate_request);
     SDapDisassembleResponse              disassembleInstructions(const SDapDisassembleRequest& disassemble_request);
     SDapSetBreakpointsResponse           setBreakpoints(const SDapSetBreakpointsRequest& set_breakpoints_request);

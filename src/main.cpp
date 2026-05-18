@@ -63,8 +63,9 @@ namespace {
     };
 
     struct SAsyncDapControlState {
-        std::atomic_bool running         = false;
-        std::atomic_bool pause_requested = false;
+        std::atomic_bool running             = false;
+        std::atomic_bool pause_requested     = false;
+        std::atomic_bool terminate_requested = false;
         std::jthread     worker;
     };
 
@@ -946,22 +947,34 @@ int main(int argc, char** argv) {
         const int thread_id = static_cast<int>(debug_selection.thread_id);
         async_dap_control_state.running.store(true);
         async_dap_control_state.pause_requested.store(false);
+        async_dap_control_state.terminate_requested.store(false);
         transient_status_message = "Running: " + stopped_action_name;
 
         async_dap_control_state.worker = std::jthread([&, dap_session, action_name, stopped_action_name, send_request, thread_id](std::stop_token) mutable {
             bool        success = false;
             std::string error_message;
 
+            bool        terminated = false;
+
             if (!send_request(*dap_session, thread_id)) {
                 error_message = action_name + " failed: " + dap_session->getLastError();
             } else if (!dap_session->waitForStoppedEvent()) {
-                error_message = "Wait after " + stopped_action_name + " failed: " + dap_session->getLastError();
+                terminated = async_dap_control_state.terminate_requested.load() && dap_session->getLastError() == "DAP session ended before a stopped event";
+                if (!terminated) {
+                    error_message = "Wait after " + stopped_action_name + " failed: " + dap_session->getLastError();
+                }
             } else {
                 success = true;
             }
 
-            screen.Post(Closure([&, dap_session, success, error_message, stopped_action_name] {
+            screen.Post(Closure([&, dap_session, success, terminated, error_message, stopped_action_name] {
                 async_dap_control_state.running.store(false);
+                async_dap_control_state.terminate_requested.store(false);
+                if (terminated) {
+                    async_dap_control_state.pause_requested.store(false);
+                    transient_status_message = "Terminated";
+                    return;
+                }
                 if (!success) {
                     async_dap_control_state.pause_requested.store(false);
                     transient_status_message = error_message;
@@ -1035,6 +1048,51 @@ int main(int argc, char** argv) {
 
         async_dap_control_state.pause_requested.store(true);
         transient_status_message = "Pause requested";
+    };
+
+    const auto terminateActiveDapSession = [&]() {
+        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
+        if (dap_session == nullptr) {
+            transient_status_message = "Terminate is only available in DAP sessions";
+            return;
+        }
+        if (isDapControlRunning()) {
+            if (!dap_session->sendDisconnectRequest({.terminate_debuggee = true})) {
+                transient_status_message = "Terminate failed: " + dap_session->getLastError();
+                return;
+            }
+
+            async_dap_control_state.terminate_requested.store(true);
+            async_dap_control_state.pause_requested.store(false);
+            transient_status_message = "Terminate requested";
+            return;
+        }
+
+        async_dap_control_state.running.store(true);
+        async_dap_control_state.pause_requested.store(false);
+        async_dap_control_state.terminate_requested.store(true);
+        transient_status_message = "Terminate requested";
+
+        async_dap_control_state.worker = std::jthread([&, dap_session](std::stop_token) {
+            bool        success = false;
+            std::string error_message;
+
+            if (!dap_session->sendDisconnectRequest({.terminate_debuggee = true})) {
+                error_message = "Terminate failed: " + dap_session->getLastError();
+            } else if (!dap_session->waitForTerminatedEvent()) {
+                error_message = "Wait after terminate failed: " + dap_session->getLastError();
+            } else {
+                success = true;
+            }
+
+            screen.Post(Closure([&, success, error_message] {
+                async_dap_control_state.running.store(false);
+                async_dap_control_state.pause_requested.store(false);
+                async_dap_control_state.terminate_requested.store(false);
+                transient_status_message = success ? "Terminated" : error_message;
+            }));
+            screen.PostEvent(Event::Custom);
+        });
     };
 
     refreshAllPanes();
@@ -1414,6 +1472,10 @@ int main(int argc, char** argv) {
                     }
                     if (command.value() == eCommand::PAUSE_EXECUTION) {
                         pauseActiveDapSession();
+                        return true;
+                    }
+                    if (command.value() == eCommand::TERMINATE_SESSION) {
+                        terminateActiveDapSession();
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);

@@ -498,6 +498,15 @@ std::string CDapDebugSession::buildPauseRequestMessage(int sequence_number, cons
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"pause","arguments":{"threadId":)" + std::to_string(pause_request.thread_id) + "}}";
 }
 
+std::string CDapDebugSession::buildTerminateRequestMessage(int sequence_number) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"terminate","arguments":{}})";
+}
+
+std::string CDapDebugSession::buildDisconnectRequestMessage(int sequence_number, const SDapDisconnectRequest& disconnect_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"disconnect","arguments":{"terminateDebuggee":)" +
+        std::string(disconnect_request.terminate_debuggee ? "true" : "false") + "}}";
+}
+
 std::string CDapDebugSession::buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request) {
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"evaluate","arguments":{"expression":")" + evaluate_request.expression +
         R"(","frameId":)" + std::to_string(evaluate_request.frame_id) + R"(,"context":")" + evaluate_request.context + R"("}})";
@@ -992,6 +1001,30 @@ SDapPauseResponse CDapDebugSession::parsePauseResponseMessage(const std::string&
     return response;
 }
 
+SDapTerminateResponse CDapDebugSession::parseTerminateResponseMessage(const std::string& response_message) {
+    SDapTerminateResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP terminate response did not report success";
+        return response;
+    }
+
+    response.success = true;
+    return response;
+}
+
+SDapDisconnectResponse CDapDebugSession::parseDisconnectResponseMessage(const std::string& response_message) {
+    SDapDisconnectResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP disconnect response did not report success";
+        return response;
+    }
+
+    response.success = true;
+    return response;
+}
+
 SDapEvaluateResponse CDapDebugSession::parseEvaluateResponseMessage(const std::string& response_message) {
     SDapEvaluateResponse response = {};
 
@@ -1326,6 +1359,15 @@ bool CDapDebugSession::waitForStoppedEvent() {
             continue;
         }
 
+        if (message.type == "response" && message.command_name == "disconnect") {
+            if (!message.success) {
+                last_error_ = "DAP disconnect response did not report success";
+                return false;
+            }
+            last_error_ = "DAP session ended before a stopped event";
+            return false;
+        }
+
         if (message.type == "event" && message.event_name == "stopped") {
             last_error_.clear();
             return true;
@@ -1334,6 +1376,47 @@ bool CDapDebugSession::waitForStoppedEvent() {
         if (message.type == "event" && (message.event_name == "terminated" || message.event_name == "exited")) {
             last_error_ = "DAP session ended before a stopped event";
             return false;
+        }
+    }
+}
+
+bool CDapDebugSession::waitForTerminatedEvent() {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    while (true) {
+        std::string response_message;
+        if (!transport_->readMessage(response_message, error_message)) {
+            last_error_ = error_message;
+            return false;
+        }
+
+        logDapMessage("dap waitForTerminatedEvent message: ", response_message);
+        const auto message = parseProtocolMessage(response_message);
+
+        if (message.type == "response" && message.command_name == "terminate") {
+            if (!message.success) {
+                last_error_ = "DAP terminate response did not report success";
+                return false;
+            }
+            continue;
+        }
+
+        if (message.type == "response" && message.command_name == "disconnect") {
+            if (!message.success) {
+                last_error_ = "DAP disconnect response did not report success";
+                return false;
+            }
+            last_error_.clear();
+            return true;
+        }
+
+        if (message.type == "event" && (message.event_name == "terminated" || message.event_name == "exited")) {
+            last_error_.clear();
+            return true;
         }
     }
 }
@@ -1770,6 +1853,42 @@ bool CDapDebugSession::sendPauseRequest(const SDapPauseRequest& pause_request) {
 
     std::string error_message;
     const auto  request_message = buildPauseRequestMessage(next_sequence_number_++, pause_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    last_error_.clear();
+    return true;
+}
+
+bool CDapDebugSession::sendTerminateRequest() {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildTerminateRequestMessage(next_sequence_number_++);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    last_error_.clear();
+    return true;
+}
+
+bool CDapDebugSession::sendDisconnectRequest(const SDapDisconnectRequest& disconnect_request) {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildDisconnectRequestMessage(next_sequence_number_++, disconnect_request);
 
     if (!transport_->sendMessage(request_message, error_message)) {
         last_error_ = error_message;
