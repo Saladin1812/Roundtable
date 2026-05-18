@@ -903,128 +903,65 @@ int main(int argc, char** argv) {
         transient_status_message = "Breakpoint applied";
     };
 
-    const auto continueActiveDapSession = [&]() {
+    const auto executeDapControl = [&](const std::string& action_name, const std::string& stopped_action_name, auto send_request) {
         auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
         if (dap_session == nullptr) {
-            transient_status_message = "Continue is only available in DAP sessions";
+            transient_status_message = action_name + " is only available in DAP sessions";
             return;
         }
         if (debug_selection.thread_id == 0) {
-            transient_status_message = "Continue failed: no active thread";
+            transient_status_message = action_name + " failed: no active thread";
             return;
         }
 
-        const auto continue_response = dap_session->continueExecution({
-            .thread_id = static_cast<int>(debug_selection.thread_id),
-        });
-        if (!continue_response.success) {
-            transient_status_message = "Continue failed: " + continue_response.error_message;
+        const auto response = send_request(*dap_session, static_cast<int>(debug_selection.thread_id));
+        if (!response.success) {
+            transient_status_message = action_name + " failed: " + response.error_message;
             return;
         }
 
         if (!dap_session->waitForStoppedEvent()) {
-            transient_status_message = "Wait after continue failed: " + dap_session->getLastError();
+            transient_status_message = "Wait after " + stopped_action_name + " failed: " + dap_session->getLastError();
             return;
         }
 
         updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
 
         memory_navigation_offset = 0;
-        transient_status_message = "Stopped after continue";
+        transient_status_message = "Stopped after " + stopped_action_name;
         refreshAllPanes();
+    };
+
+    const auto continueActiveDapSession = [&]() {
+        executeDapControl("Continue", "continue", [](CDapDebugSession& dap_session, int thread_id) {
+            return dap_session.continueExecution({
+                .thread_id = thread_id,
+            });
+        });
     };
 
     const auto stepOverActiveDapSession = [&]() {
-        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
-        if (dap_session == nullptr) {
-            transient_status_message = "Step over is only available in DAP sessions";
-            return;
-        }
-        if (debug_selection.thread_id == 0) {
-            transient_status_message = "Step over failed: no active thread";
-            return;
-        }
-
-        const auto step_response = dap_session->stepOver({
-            .thread_id = static_cast<int>(debug_selection.thread_id),
+        executeDapControl("Step over", "step over", [](CDapDebugSession& dap_session, int thread_id) {
+            return dap_session.stepOver({
+                .thread_id = thread_id,
+            });
         });
-        if (!step_response.success) {
-            transient_status_message = "Step over failed: " + step_response.error_message;
-            return;
-        }
-
-        if (!dap_session->waitForStoppedEvent()) {
-            transient_status_message = "Wait after step over failed: " + dap_session->getLastError();
-            return;
-        }
-
-        updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
-
-        memory_navigation_offset = 0;
-        transient_status_message = "Stopped after step over";
-        refreshAllPanes();
     };
 
     const auto stepIntoActiveDapSession = [&]() {
-        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
-        if (dap_session == nullptr) {
-            transient_status_message = "Step into is only available in DAP sessions";
-            return;
-        }
-        if (debug_selection.thread_id == 0) {
-            transient_status_message = "Step into failed: no active thread";
-            return;
-        }
-
-        const auto step_response = dap_session->stepInto({
-            .thread_id = static_cast<int>(debug_selection.thread_id),
+        executeDapControl("Step into", "step into", [](CDapDebugSession& dap_session, int thread_id) {
+            return dap_session.stepInto({
+                .thread_id = thread_id,
+            });
         });
-        if (!step_response.success) {
-            transient_status_message = "Step into failed: " + step_response.error_message;
-            return;
-        }
-
-        if (!dap_session->waitForStoppedEvent()) {
-            transient_status_message = "Wait after step into failed: " + dap_session->getLastError();
-            return;
-        }
-
-        updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
-
-        memory_navigation_offset = 0;
-        transient_status_message = "Stopped after step into";
-        refreshAllPanes();
     };
 
     const auto stepOutActiveDapSession = [&]() {
-        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
-        if (dap_session == nullptr) {
-            transient_status_message = "Step out is only available in DAP sessions";
-            return;
-        }
-        if (debug_selection.thread_id == 0) {
-            transient_status_message = "Step out failed: no active thread";
-            return;
-        }
-
-        const auto step_response = dap_session->stepOut({
-            .thread_id = static_cast<int>(debug_selection.thread_id),
+        executeDapControl("Step out", "step out", [](CDapDebugSession& dap_session, int thread_id) {
+            return dap_session.stepOut({
+                .thread_id = thread_id,
+            });
         });
-        if (!step_response.success) {
-            transient_status_message = "Step out failed: " + step_response.error_message;
-            return;
-        }
-
-        if (!dap_session->waitForStoppedEvent()) {
-            transient_status_message = "Wait after step out failed: " + dap_session->getLastError();
-            return;
-        }
-
-        updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
-
-        memory_navigation_offset = 0;
-        transient_status_message = "Stopped after step out";
-        refreshAllPanes();
     };
 
     refreshAllPanes();
