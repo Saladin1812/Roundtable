@@ -63,7 +63,8 @@ namespace {
     };
 
     struct SAsyncDapControlState {
-        std::atomic_bool running = false;
+        std::atomic_bool running         = false;
+        std::atomic_bool pause_requested = false;
         std::jthread     worker;
     };
 
@@ -944,15 +945,15 @@ int main(int argc, char** argv) {
 
         const int thread_id = static_cast<int>(debug_selection.thread_id);
         async_dap_control_state.running.store(true);
+        async_dap_control_state.pause_requested.store(false);
         transient_status_message = "Running: " + stopped_action_name;
 
         async_dap_control_state.worker = std::jthread([&, dap_session, action_name, stopped_action_name, send_request, thread_id](std::stop_token) mutable {
             bool        success = false;
             std::string error_message;
 
-            const auto  response = send_request(*dap_session, thread_id);
-            if (!response.success) {
-                error_message = action_name + " failed: " + response.error_message;
+            if (!send_request(*dap_session, thread_id)) {
+                error_message = action_name + " failed: " + dap_session->getLastError();
             } else if (!dap_session->waitForStoppedEvent()) {
                 error_message = "Wait after " + stopped_action_name + " failed: " + dap_session->getLastError();
             } else {
@@ -962,22 +963,25 @@ int main(int argc, char** argv) {
             screen.Post(Closure([&, dap_session, success, error_message, stopped_action_name] {
                 async_dap_control_state.running.store(false);
                 if (!success) {
+                    async_dap_control_state.pause_requested.store(false);
                     transient_status_message = error_message;
                     return;
                 }
 
                 updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
 
-                memory_navigation_offset = 0;
-                transient_status_message = "Stopped after " + stopped_action_name;
+                const std::string completed_action_name = async_dap_control_state.pause_requested.exchange(false) ? "pause" : stopped_action_name;
+                memory_navigation_offset                = 0;
+                transient_status_message                = "Stopped after " + completed_action_name;
                 refreshAllPanes();
             }));
+            screen.PostEvent(Event::Custom);
         });
     };
 
     const auto continueActiveDapSession = [&]() {
         executeDapControl("Continue", "continue", [](CDapDebugSession& dap_session, int thread_id) {
-            return dap_session.continueExecution({
+            return dap_session.sendContinueRequest({
                 .thread_id = thread_id,
             });
         });
@@ -985,7 +989,7 @@ int main(int argc, char** argv) {
 
     const auto stepOverActiveDapSession = [&]() {
         executeDapControl("Step over", "step over", [](CDapDebugSession& dap_session, int thread_id) {
-            return dap_session.stepOver({
+            return dap_session.sendStepOverRequest({
                 .thread_id = thread_id,
             });
         });
@@ -993,7 +997,7 @@ int main(int argc, char** argv) {
 
     const auto stepIntoActiveDapSession = [&]() {
         executeDapControl("Step into", "step into", [](CDapDebugSession& dap_session, int thread_id) {
-            return dap_session.stepInto({
+            return dap_session.sendStepIntoRequest({
                 .thread_id = thread_id,
             });
         });
@@ -1001,10 +1005,36 @@ int main(int argc, char** argv) {
 
     const auto stepOutActiveDapSession = [&]() {
         executeDapControl("Step out", "step out", [](CDapDebugSession& dap_session, int thread_id) {
-            return dap_session.stepOut({
+            return dap_session.sendStepOutRequest({
                 .thread_id = thread_id,
             });
         });
+    };
+
+    const auto pauseActiveDapSession = [&]() {
+        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
+        if (dap_session == nullptr) {
+            transient_status_message = "Pause is only available in DAP sessions";
+            return;
+        }
+        if (!isDapControlRunning()) {
+            transient_status_message = "Pause is only available while debugger is running";
+            return;
+        }
+        if (debug_selection.thread_id == 0) {
+            transient_status_message = "Pause failed: no active thread";
+            return;
+        }
+
+        if (!dap_session->sendPauseRequest({
+                .thread_id = static_cast<int>(debug_selection.thread_id),
+            })) {
+            transient_status_message = "Pause failed: " + dap_session->getLastError();
+            return;
+        }
+
+        async_dap_control_state.pause_requested.store(true);
+        transient_status_message = "Pause requested";
     };
 
     refreshAllPanes();
@@ -1380,6 +1410,10 @@ int main(int argc, char** argv) {
                     }
                     if (command.value() == eCommand::STEP_OUT) {
                         stepOutActiveDapSession();
+                        return true;
+                    }
+                    if (command.value() == eCommand::PAUSE_EXECUTION) {
+                        pauseActiveDapSession();
                         return true;
                     }
                     executeCommand(command.value(), focused_pane, view_visibility);

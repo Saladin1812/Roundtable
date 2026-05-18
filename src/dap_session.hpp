@@ -153,6 +153,15 @@ struct SDapStepOutResponse {
     std::string error_message;
 };
 
+struct SDapPauseRequest {
+    int thread_id = 0;
+};
+
+struct SDapPauseResponse {
+    bool        success = false;
+    std::string error_message;
+};
+
 struct SDapEvaluateRequest {
     std::string expression;
     int         frame_id = 0;
@@ -294,6 +303,8 @@ class CDapDebugSession : public IDebugSession {
     static SDapStepIntoResponse          parseStepIntoResponseMessage(const std::string& response_message);
     static std::string                   buildStepOutRequestMessage(int sequence_number, const SDapStepOutRequest& step_out_request);
     static SDapStepOutResponse           parseStepOutResponseMessage(const std::string& response_message);
+    static std::string                   buildPauseRequestMessage(int sequence_number, const SDapPauseRequest& pause_request);
+    static SDapPauseResponse             parsePauseResponseMessage(const std::string& response_message);
     static std::string                   buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request);
     static SDapEvaluateResponse          parseEvaluateResponseMessage(const std::string& response_message);
     static std::string                   buildDisassembleRequestMessage(int sequence_number, const SDapDisassembleRequest& disassemble_request);
@@ -316,10 +327,15 @@ class CDapDebugSession : public IDebugSession {
     SDapStackTraceResponse               getStackTrace(const SDapStackTraceRequest& stack_trace_request);
     SDapScopesResponse                   getScopes(const SDapScopesRequest& scopes_request);
     SDapVariablesResponse                getVariables(const SDapVariablesRequest& variables_request);
+    bool                                 sendContinueRequest(const SDapContinueRequest& continue_request);
+    bool                                 sendStepOverRequest(const SDapStepOverRequest& step_over_request);
+    bool                                 sendStepIntoRequest(const SDapStepIntoRequest& step_into_request);
+    bool                                 sendStepOutRequest(const SDapStepOutRequest& step_out_request);
     SDapContinueResponse                 continueExecution(const SDapContinueRequest& continue_request);
     SDapStepOverResponse                 stepOver(const SDapStepOverRequest& step_over_request);
     SDapStepIntoResponse                 stepInto(const SDapStepIntoRequest& step_into_request);
     SDapStepOutResponse                  stepOut(const SDapStepOutRequest& step_out_request);
+    bool                                 sendPauseRequest(const SDapPauseRequest& pause_request);
     SDapEvaluateResponse                 evaluate(const SDapEvaluateRequest& evaluate_request);
     SDapDisassembleResponse              disassembleInstructions(const SDapDisassembleRequest& disassemble_request);
     SDapSetBreakpointsResponse           setBreakpoints(const SDapSetBreakpointsRequest& set_breakpoints_request);
@@ -339,4 +355,5 @@ class CDapDebugSession : public IDebugSession {
     SDapAdapterCapabilities        adapter_capabilities_;
     std::string                    last_error_;
     int                            next_sequence_number_ = 1;
+    bool                           pending_stopped_event_ = false;
 };

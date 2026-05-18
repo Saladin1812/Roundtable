@@ -459,6 +459,24 @@ TEST_CASE("CDapDebugSession parses a step out response message") {
     CHECK(response.error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession builds a pause request message") {
+    const std::string request_message = CDapDebugSession::buildPauseRequestMessage(19,
+                                                                                   {
+                                                                                       .thread_id = 13,
+                                                                                   });
+
+    CHECK(request_message.find("\"seq\":19") != std::string::npos);
+    CHECK(request_message.find("\"command\":\"pause\"") != std::string::npos);
+    CHECK(request_message.find("\"threadId\":13") != std::string::npos);
+}
+
+TEST_CASE("CDapDebugSession parses a pause response message") {
+    const SDapPauseResponse response = CDapDebugSession::parsePauseResponseMessage(R"({"success":true})");
+
+    REQUIRE(response.success);
+    CHECK(response.error_message.empty());
+}
+
 TEST_CASE("CDapDebugSession builds an evaluate request message") {
     const std::string request_message = CDapDebugSession::buildEvaluateRequestMessage(16,
                                                                                       {
@@ -752,6 +770,24 @@ TEST_CASE("CDapDebugSession continues execution from a continue response") {
     CHECK(continue_response.error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession preserves stopped events received before a control response") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"stopped","body":{"threadId":13}})",
+        R"({"type":"response","command":"continue","success":true,"body":{"allThreadsContinued":true}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    const auto continue_response = dap_session.continueExecution({
+        .thread_id = 13,
+    });
+
+    REQUIRE(continue_response.success);
+    REQUIRE(dap_session.waitForStoppedEvent());
+}
+
 TEST_CASE("CDapDebugSession steps over from a next response") {
     auto transport = std::make_unique<CStubDapTransport>(true);
     transport->setReadMessages({
@@ -804,6 +840,21 @@ TEST_CASE("CDapDebugSession steps out from a stepOut response") {
 
     REQUIRE(step_response.success);
     CHECK(step_response.error_message.empty());
+}
+
+TEST_CASE("CDapDebugSession sends a pause request without reading a response") {
+    auto              transport     = std::make_unique<CStubDapTransport>(true);
+    CStubDapTransport* transport_ptr = transport.get();
+    CDapDebugSession  dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    REQUIRE(dap_session.sendPauseRequest({
+        .thread_id = 13,
+    }));
+
+    const std::string request_message = transport_ptr->getLastSentMessage();
+    CHECK(request_message.find("\"command\":\"pause\"") != std::string::npos);
+    CHECK(request_message.find("\"threadId\":13") != std::string::npos);
 }
 
 TEST_CASE("CDapDebugSession evaluates an expression from an evaluate response") {

@@ -494,6 +494,10 @@ std::string CDapDebugSession::buildStepOutRequestMessage(int sequence_number, co
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"stepOut","arguments":{"threadId":)" + std::to_string(step_out_request.thread_id) + "}}";
 }
 
+std::string CDapDebugSession::buildPauseRequestMessage(int sequence_number, const SDapPauseRequest& pause_request) {
+    return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"pause","arguments":{"threadId":)" + std::to_string(pause_request.thread_id) + "}}";
+}
+
 std::string CDapDebugSession::buildEvaluateRequestMessage(int sequence_number, const SDapEvaluateRequest& evaluate_request) {
     return "{\"seq\":" + std::to_string(sequence_number) + R"(,"type":"request","command":"evaluate","arguments":{"expression":")" + evaluate_request.expression +
         R"(","frameId":)" + std::to_string(evaluate_request.frame_id) + R"(,"context":")" + evaluate_request.context + R"("}})";
@@ -976,6 +980,18 @@ SDapStepOutResponse CDapDebugSession::parseStepOutResponseMessage(const std::str
     return response;
 }
 
+SDapPauseResponse CDapDebugSession::parsePauseResponseMessage(const std::string& response_message) {
+    SDapPauseResponse response = {};
+
+    if (response_message.find("\"success\":true") == std::string::npos) {
+        response.error_message = "DAP pause response did not report success";
+        return response;
+    }
+
+    response.success = true;
+    return response;
+}
+
 SDapEvaluateResponse CDapDebugSession::parseEvaluateResponseMessage(const std::string& response_message) {
     SDapEvaluateResponse response = {};
 
@@ -1278,6 +1294,12 @@ bool CDapDebugSession::waitForStoppedEvent() {
         return false;
     }
 
+    if (pending_stopped_event_) {
+        pending_stopped_event_ = false;
+        last_error_.clear();
+        return true;
+    }
+
     std::string error_message;
     while (true) {
         std::string response_message;
@@ -1518,6 +1540,11 @@ SDapContinueResponse CDapDebugSession::continueExecution(const SDapContinueReque
         logDapMessage("dap continue message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
+        if (message.type == "event" && message.event_name == "stopped") {
+            pending_stopped_event_ = true;
+            continue;
+        }
+
         if (message.type == "event") {
             continue;
         }
@@ -1526,6 +1553,24 @@ SDapContinueResponse CDapDebugSession::continueExecution(const SDapContinueReque
             return parseContinueResponseMessage(response_message);
         }
     }
+}
+
+bool CDapDebugSession::sendContinueRequest(const SDapContinueRequest& continue_request) {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildContinueRequestMessage(next_sequence_number_++, continue_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    last_error_.clear();
+    return true;
 }
 
 SDapStepOverResponse CDapDebugSession::stepOver(const SDapStepOverRequest& step_over_request) {
@@ -1558,6 +1603,11 @@ SDapStepOverResponse CDapDebugSession::stepOver(const SDapStepOverRequest& step_
         logDapMessage("dap next message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
+        if (message.type == "event" && message.event_name == "stopped") {
+            pending_stopped_event_ = true;
+            continue;
+        }
+
         if (message.type == "event") {
             continue;
         }
@@ -1566,6 +1616,24 @@ SDapStepOverResponse CDapDebugSession::stepOver(const SDapStepOverRequest& step_
             return parseStepOverResponseMessage(response_message);
         }
     }
+}
+
+bool CDapDebugSession::sendStepOverRequest(const SDapStepOverRequest& step_over_request) {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildStepOverRequestMessage(next_sequence_number_++, step_over_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    last_error_.clear();
+    return true;
 }
 
 SDapStepIntoResponse CDapDebugSession::stepInto(const SDapStepIntoRequest& step_into_request) {
@@ -1598,6 +1666,11 @@ SDapStepIntoResponse CDapDebugSession::stepInto(const SDapStepIntoRequest& step_
         logDapMessage("dap stepIn message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
+        if (message.type == "event" && message.event_name == "stopped") {
+            pending_stopped_event_ = true;
+            continue;
+        }
+
         if (message.type == "event") {
             continue;
         }
@@ -1606,6 +1679,24 @@ SDapStepIntoResponse CDapDebugSession::stepInto(const SDapStepIntoRequest& step_
             return parseStepIntoResponseMessage(response_message);
         }
     }
+}
+
+bool CDapDebugSession::sendStepIntoRequest(const SDapStepIntoRequest& step_into_request) {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildStepIntoRequestMessage(next_sequence_number_++, step_into_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    last_error_.clear();
+    return true;
 }
 
 SDapStepOutResponse CDapDebugSession::stepOut(const SDapStepOutRequest& step_out_request) {
@@ -1638,6 +1729,11 @@ SDapStepOutResponse CDapDebugSession::stepOut(const SDapStepOutRequest& step_out
         logDapMessage("dap stepOut message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
+        if (message.type == "event" && message.event_name == "stopped") {
+            pending_stopped_event_ = true;
+            continue;
+        }
+
         if (message.type == "event") {
             continue;
         }
@@ -1646,6 +1742,42 @@ SDapStepOutResponse CDapDebugSession::stepOut(const SDapStepOutRequest& step_out
             return parseStepOutResponseMessage(response_message);
         }
     }
+}
+
+bool CDapDebugSession::sendStepOutRequest(const SDapStepOutRequest& step_out_request) {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildStepOutRequestMessage(next_sequence_number_++, step_out_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    last_error_.clear();
+    return true;
+}
+
+bool CDapDebugSession::sendPauseRequest(const SDapPauseRequest& pause_request) {
+    if (!isConnected()) {
+        last_error_ = "DAP session is not connected";
+        return false;
+    }
+
+    std::string error_message;
+    const auto  request_message = buildPauseRequestMessage(next_sequence_number_++, pause_request);
+
+    if (!transport_->sendMessage(request_message, error_message)) {
+        last_error_ = error_message;
+        return false;
+    }
+
+    last_error_.clear();
+    return true;
 }
 
 SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evaluate_request) {
