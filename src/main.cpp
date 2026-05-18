@@ -138,6 +138,36 @@ namespace {
         return location + " ";
     }
 
+    SStoppedLocation stackFrameLocation(const SStoppedStackFrame& stack_frame) {
+        return {
+            .function_name = stack_frame.function_name,
+            .source_path   = stack_frame.source_path,
+            .line          = stack_frame.line,
+            .column        = stack_frame.column,
+        };
+    }
+
+    std::vector<std::string> formatStackPaneRows(const std::vector<SStoppedStackFrame>& stack_frames) {
+        std::vector<std::string> rows;
+        rows.reserve(stack_frames.size());
+
+        for (std::size_t index = 0; index < stack_frames.size(); ++index) {
+            const auto& stack_frame = stack_frames[index];
+            std::string row         = "#" + std::to_string(index) + " ";
+            row += stack_frame.function_name.empty() ? "<unknown>" : stack_frame.function_name;
+            if (!stack_frame.source_path.empty()) {
+                row += " ";
+                row += compactPathForStatus(stack_frame.source_path);
+                if (stack_frame.line > 0) {
+                    row += ":" + std::to_string(stack_frame.line);
+                }
+            }
+            rows.push_back(std::move(row));
+        }
+
+        return rows;
+    }
+
     struct SLeaderHintRow {
         std::string keys;
         std::string description;
@@ -147,6 +177,11 @@ namespace {
 
     int commandPriority(eCommand command, eFocusPane focused_pane) {
         switch (focused_pane) {
+            case eFocusPane::STACK:
+                if (command == eCommand::FOCUS_LOCALS || command == eCommand::FOCUS_MEMORY) {
+                    return 0;
+                }
+                break;
             case eFocusPane::WATCH_LIST:
                 if (command == eCommand::EDIT_WATCH || command == eCommand::REMOVE_WATCH || command == eCommand::ADD_WATCH) {
                     return 0;
@@ -156,7 +191,7 @@ namespace {
                 }
                 break;
             case eFocusPane::LOCALS:
-                if (command == eCommand::SET_MEMORY_TARGET || command == eCommand::FOCUS_MEMORY) {
+                if (command == eCommand::SET_MEMORY_TARGET || command == eCommand::FOCUS_MEMORY || command == eCommand::FOCUS_STACK) {
                     return 1;
                 }
                 break;
@@ -621,7 +656,7 @@ int main(int argc, char** argv) {
     SDebugSelection                debug_selection              = bootstrap_result.selection;
     std::uint64_t                  disassembly_start_address    = bootstrap_result.disassembly_start_address;
     std::string                    disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
-    SStoppedLocation               stopped_location             = bootstrap_result.stopped_location;
+    SStoppedContext                stopped_context              = bootstrap_result.stopped_context;
     eDebuggerSessionState          session_state                = bootstrap_result.state;
     std::string                    base_session_status          = bootstrap_result.status_message;
     std::string                    transient_status_message     = {};
@@ -657,6 +692,10 @@ int main(int argc, char** argv) {
          .title = " Locals ",
          .rows  = {},
     };
+    SSelectablePaneState stack_pane = {
+        .title = " Stack ",
+        .rows  = {},
+    };
     SSelectablePaneState memory_view_pane = {
         .title = " Memory View ",
         .rows  = {},
@@ -676,16 +715,18 @@ int main(int argc, char** argv) {
 
     const auto           clearDebuggerPanes = [&] {
         locals_pane.rows                = {"Session terminated"};
+        stack_pane.rows                 = {"Session terminated"};
         memory_view_pane.rows           = {"Session terminated"};
         disassembly_pane.rows           = {"Session terminated"};
         watch_list_pane.rows            = {"Session terminated"};
         locals_pane.selected_index      = 0;
+        stack_pane.selected_index       = 0;
         memory_view_pane.selected_index = 0;
         disassembly_pane.selected_index = 0;
         watch_list_pane.selected_index  = 0;
         memory_target_label             = {};
         memory_context                  = {};
-        stopped_location                = {};
+        stopped_context                 = {};
     };
 
     const auto isSessionTerminated = [&] { return session_state == eDebuggerSessionState::TERMINATED; };
@@ -698,6 +739,10 @@ int main(int argc, char** argv) {
             clearDebuggerPanes();
             return;
         }
+
+        stack_pane.title          = " Stack [T:" + std::to_string(debug_selection.thread_id) + "] ";
+        stack_pane.rows           = formatStackPaneRows(stopped_context.stack_frames);
+        stack_pane.selected_index = std::min(debug_selection.frame_index, stack_pane.rows.empty() ? 0UL : stack_pane.rows.size() - 1);
 
         SPaneRefreshInputs inputs = {
             .debug_session                = *debug_session,
@@ -726,7 +771,7 @@ int main(int argc, char** argv) {
         debug_selection              = bootstrap_result.selection;
         disassembly_start_address    = bootstrap_result.disassembly_start_address;
         disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
-        stopped_location             = bootstrap_result.stopped_location;
+        stopped_context              = bootstrap_result.stopped_context;
         session_state                = bootstrap_result.state;
         base_session_status          = bootstrap_result.status_message;
         transient_status_message     = std::move(status_message);
@@ -851,7 +896,7 @@ int main(int argc, char** argv) {
                     return;
                 }
 
-                stopped_location = updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+                stopped_context = updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
 
                 const std::string completed_action_name = async_dap_control_state.pause_requested.exchange(false) ? "pause" : stopped_action_name;
                 async_dap_control_state.quit_requested.store(false);
@@ -1057,10 +1102,15 @@ int main(int argc, char** argv) {
 
     auto renderer = Renderer([&] {
         const std::string current_status  = transient_status_message.empty() ? base_session_status : transient_status_message;
-        const std::string stopped_at      = formatStoppedLocation(stopped_location);
+        const std::string stopped_at      = formatStoppedLocation(stopped_context.location);
         Element           locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
+        Element           stack           = renderSelectablePane(stack_pane, focused_pane == eFocusPane::STACK, app_theme);
         Element           watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
         Element           auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme, memory_context);
+        Element           left_column     = vbox({
+            locals | flex,
+            stack | size(HEIGHT, EQUAL, 8),
+        });
 
         Elements          runtime_status_items = {
             text(" Roundtable ") | bgcolor(app_theme.selected_background) | color(app_theme.selected_foreground),
@@ -1084,7 +1134,7 @@ int main(int argc, char** argv) {
 
         Element content = vbox({
             hbox({
-                locals | size(WIDTH, EQUAL, 28),
+                left_column | size(WIDTH, EQUAL, 28),
                 auxiliary_views | flex,
                 watch_list | size(WIDTH, EQUAL, 28),
             }) | flex,
@@ -1464,6 +1514,19 @@ int main(int argc, char** argv) {
             focused_pane = advanceFocusPane(focused_pane, view_visibility);
             refreshAllPanes();
             return true;
+        }
+
+        if (focused_pane == eFocusPane::STACK) {
+            const bool handled = handleVerticalNavigation(event, stack_pane);
+            if (handled) {
+                if (stack_pane.selected_index < stopped_context.stack_frames.size()) {
+                    debug_selection.frame_index = stack_pane.selected_index;
+                    stopped_context.location    = stackFrameLocation(stopped_context.stack_frames[stack_pane.selected_index]);
+                    memory_navigation_offset    = 0;
+                    refreshAllPanes();
+                }
+            }
+            return handled;
         }
 
         if (focused_pane == eFocusPane::LOCALS) {

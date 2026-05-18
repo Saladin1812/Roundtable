@@ -203,6 +203,9 @@ namespace {
         if (value == "locals") {
             return eFocusPane::LOCALS;
         }
+        if (value == "stack") {
+            return eFocusPane::STACK;
+        }
         if (value == "memory") {
             return eFocusPane::MEMORY_VIEW;
         }

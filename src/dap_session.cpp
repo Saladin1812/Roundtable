@@ -311,6 +311,11 @@ bool CTcpDapTransport::connect(const SDapEndpointConfig& endpoint_config, std::s
     }
 
     if (child_pid == 0) {
+        auto* ignored_stdout = std::freopen("/dev/null", "w", stdout);
+        auto* ignored_stderr = std::freopen("/dev/null", "w", stderr);
+        (void)ignored_stdout;
+        (void)ignored_stderr;
+
         std::vector<std::string> argument_strings;
         argument_strings.reserve(endpoint_config.arguments.size() + 5);
         argument_strings.push_back(endpoint_config.command);

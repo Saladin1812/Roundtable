@@ -27,8 +27,8 @@ namespace {
     }
 
     bool finalizeDapSessionStop(CDapDebugSession& dap_session, bool continue_once, SDebugSelection& selection, std::uint64_t& disassembly_start_address,
-                                std::string& disassembly_memory_reference, SStoppedLocation& stopped_location, std::string& error_message,
-                                const std::string& continue_failure_prefix, const std::string& wait_after_continue_prefix) {
+                                std::string& disassembly_memory_reference, SStoppedContext& stopped_context, std::string& error_message, const std::string& continue_failure_prefix,
+                                const std::string& wait_after_continue_prefix) {
         if (!dap_session.configurationDone()) {
             error_message = "DAP configurationDone failed: " + dap_session.getLastError();
             return false;
@@ -39,7 +39,7 @@ namespace {
             return false;
         }
 
-        stopped_location = updateDapStoppedContext(dap_session, selection, disassembly_start_address, disassembly_memory_reference);
+        stopped_context = updateDapStoppedContext(dap_session, selection, disassembly_start_address, disassembly_memory_reference);
 
         if (continue_once && selection.thread_id != 0) {
             const auto continue_response = dap_session.continueExecution({
@@ -56,7 +56,7 @@ namespace {
                 return false;
             }
 
-            stopped_location = updateDapStoppedContext(dap_session, selection, disassembly_start_address, disassembly_memory_reference);
+            stopped_context = updateDapStoppedContext(dap_session, selection, disassembly_start_address, disassembly_memory_reference);
         }
 
         return true;
@@ -91,11 +91,11 @@ bool configureDapBreakpoints(CDapDebugSession& dap_session, const std::vector<SS
     return true;
 }
 
-SStoppedLocation updateDapStoppedContext(CDapDebugSession& dap_session, SDebugSelection& selection, std::uint64_t& disassembly_start_address,
-                                         std::string& disassembly_memory_reference) {
-    SStoppedLocation stopped_location = {};
+SStoppedContext updateDapStoppedContext(CDapDebugSession& dap_session, SDebugSelection& selection, std::uint64_t& disassembly_start_address,
+                                        std::string& disassembly_memory_reference) {
+    SStoppedContext stopped_context = {};
 
-    auto             threads = dap_session.getThreads();
+    auto            threads = dap_session.getThreads();
     if (threads.success && !threads.threads.empty()) {
         selection.thread_id = threads.threads.front().id;
     }
@@ -114,12 +114,22 @@ SStoppedLocation updateDapStoppedContext(CDapDebugSession& dap_session, SDebugSe
             const auto main_frame_iterator     = std::ranges::find_if(stack_trace.stack_frames, [](const SDapStackFrame& frame) { return frame.name == "main"; });
             const auto selected_frame_iterator = main_frame_iterator != stack_trace.stack_frames.end() ? main_frame_iterator : stack_trace.stack_frames.begin();
 
-            selection.frame_index = static_cast<std::size_t>(std::distance(stack_trace.stack_frames.begin(), selected_frame_iterator));
-            stopped_location      = {
-                     .function_name = selected_frame_iterator->name,
-                     .source_path   = selected_frame_iterator->source_path,
-                     .line          = selected_frame_iterator->line,
-                     .column        = selected_frame_iterator->column,
+            stopped_context.stack_frames.reserve(stack_trace.stack_frames.size());
+            for (const auto& frame : stack_trace.stack_frames) {
+                stopped_context.stack_frames.push_back({
+                    .function_name = frame.name,
+                    .source_path   = frame.source_path,
+                    .line          = frame.line,
+                    .column        = frame.column,
+                });
+            }
+
+            selection.frame_index    = static_cast<std::size_t>(std::distance(stack_trace.stack_frames.begin(), selected_frame_iterator));
+            stopped_context.location = {
+                .function_name = selected_frame_iterator->name,
+                .source_path   = selected_frame_iterator->source_path,
+                .line          = selected_frame_iterator->line,
+                .column        = selected_frame_iterator->column,
             };
 
             if (!selected_frame_iterator->instruction_pointer_reference.empty()) {
@@ -131,19 +141,27 @@ SStoppedLocation updateDapStoppedContext(CDapDebugSession& dap_session, SDebugSe
         }
     }
 
-    return stopped_location;
+    return stopped_context;
 }
 
 SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
     if (app_config.session_mode == eSessionMode::MOCK) {
         return {
             .session                      = std::make_unique<CMockDebugSession>(),
-            .selection                    = {},
+            .selection                    = {.thread_id = 1, .frame_index = 0},
             .disassembly_start_address    = 0x401000,
             .disassembly_memory_reference = "",
-            .stopped_location             = {},
-            .status_message               = "Mock session",
-            .state                        = eDebuggerSessionState::MOCK,
+            .stopped_context =
+                {
+                    .location = {.function_name = "main", .source_path = "mock_sample.cpp", .line = 12, .column = 5},
+                    .stack_frames =
+                        {
+                            {.function_name = "main", .source_path = "mock_sample.cpp", .line = 12, .column = 5},
+                            {.function_name = "_start", .source_path = "", .line = 0, .column = 0},
+                        },
+                },
+            .status_message = "Mock session",
+            .state          = eDebuggerSessionState::MOCK,
         };
     }
 
@@ -165,7 +183,7 @@ SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
             .selection                    = {},
             .disassembly_start_address    = 0x401000,
             .disassembly_memory_reference = "",
-            .stopped_location             = {},
+            .stopped_context              = {},
             .status_message               = "DAP launch config is incomplete and autodetect failed",
             .state                        = eDebuggerSessionState::ERROR,
         };
@@ -178,16 +196,16 @@ SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
             .selection                    = {},
             .disassembly_start_address    = 0x401000,
             .disassembly_memory_reference = "",
-            .stopped_location             = {},
+            .stopped_context              = {},
             .status_message               = bootstrap_error_message,
             .state                        = eDebuggerSessionState::ERROR,
         };
     }
 
-    SDebugSelection  selection                 = {};
-    std::uint64_t    disassembly_start_address = 0x401000;
-    std::string      disassembly_memory_reference;
-    SStoppedLocation stopped_location;
+    SDebugSelection selection                 = {};
+    std::uint64_t   disassembly_start_address = 0x401000;
+    std::string     disassembly_memory_reference;
+    SStoppedContext stopped_context;
 
     if (!dap_session->launch({
             .program           = app_config.dap_launch.program,
@@ -200,7 +218,7 @@ SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
             .selection                    = {},
             .disassembly_start_address    = 0x401000,
             .disassembly_memory_reference = "",
-            .stopped_location             = {},
+            .stopped_context              = {},
             .status_message               = "DAP launch failed: " + dap_session->getLastError(),
             .state                        = eDebuggerSessionState::ERROR,
         };
@@ -212,20 +230,20 @@ SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
             .selection                    = {},
             .disassembly_start_address    = 0x401000,
             .disassembly_memory_reference = "",
-            .stopped_location             = {},
+            .stopped_context              = {},
             .status_message               = bootstrap_error_message,
             .state                        = eDebuggerSessionState::ERROR,
         };
     }
 
-    if (!finalizeDapSessionStop(*dap_session, app_config.dap_launch.continue_once, selection, disassembly_start_address, disassembly_memory_reference, stopped_location,
+    if (!finalizeDapSessionStop(*dap_session, app_config.dap_launch.continue_once, selection, disassembly_start_address, disassembly_memory_reference, stopped_context,
                                 bootstrap_error_message, "DAP continue failed: ", "DAP wait after continue failed: ")) {
         return {
             .session                      = std::move(dap_session),
             .selection                    = selection,
             .disassembly_start_address    = disassembly_start_address,
             .disassembly_memory_reference = disassembly_memory_reference,
-            .stopped_location             = stopped_location,
+            .stopped_context              = stopped_context,
             .status_message               = bootstrap_error_message,
             .state                        = eDebuggerSessionState::ERROR,
         };
@@ -236,7 +254,7 @@ SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
         .selection                    = selection,
         .disassembly_start_address    = disassembly_start_address,
         .disassembly_memory_reference = disassembly_memory_reference,
-        .stopped_location             = stopped_location,
+        .stopped_context              = stopped_context,
         .status_message               = selection.thread_id != 0 ? "DAP launch session" : "DAP launch session without active thread",
         .state                        = eDebuggerSessionState::STOPPED,
     };

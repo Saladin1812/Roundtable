@@ -9,6 +9,7 @@
 
 enum class eFocusPane : std::uint8_t {
     LOCALS,
+    STACK,
     MEMORY_VIEW,
     DISASSEMBLY_VIEW,
     WATCH_LIST,
@@ -16,6 +17,7 @@ enum class eFocusPane : std::uint8_t {
 
 enum class eCommand : std::uint8_t {
     FOCUS_LOCALS,
+    FOCUS_STACK,
     FOCUS_MEMORY,
     FOCUS_DISASSEMBLY,
     FOCUS_WATCH_LIST,
