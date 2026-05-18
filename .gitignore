@@ -42,6 +42,7 @@ _deps/
 # Editor and local tool state
 .cache/
 .codex
+.local-notes/
 .idea/
 .vscode/
 *.swp
