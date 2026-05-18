@@ -1,11 +1,13 @@
 #include <array>
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -58,6 +60,11 @@ namespace {
         bool         active          = false;
         eThemePreset original_preset = eThemePreset::DEFAULT;
         std::size_t  selected_index  = 0;
+    };
+
+    struct SAsyncDapControlState {
+        std::atomic_bool running = false;
+        std::jthread     worker;
     };
 
     SPromptState beginPrompt(ePromptMode mode, std::string initial_input = "", bool replace_on_input = false) {
@@ -817,11 +824,12 @@ int main(int argc, char** argv) {
                       .original_preset = active_theme_preset,
                       .selected_index  = themePresetIndex(active_theme_preset),
     };
-    eWatchActionMode     watch_action_mode = eWatchActionMode::NONE;
+    eWatchActionMode      watch_action_mode       = eWatchActionMode::NONE;
+    SAsyncDapControlState async_dap_control_state = {};
 
-    SSelectablePaneState locals_pane = {
-        .title = " Locals ",
-        .rows  = {},
+    SSelectablePaneState  locals_pane = {
+         .title = " Locals ",
+         .rows  = {},
     };
     SSelectablePaneState memory_view_pane = {
         .title = " Memory View ",
@@ -838,7 +846,13 @@ int main(int argc, char** argv) {
     std::string          memory_target_label = {};
     SMemoryRenderContext memory_context      = {};
 
+    const auto           isDapControlRunning = [&] { return async_dap_control_state.running.load(); };
+
     const auto           refreshAllPanes = [&] {
+        if (isDapControlRunning()) {
+            return;
+        }
+
         SPaneRefreshInputs inputs = {
                       .debug_session                = *debug_session,
                       .debug_selection              = debug_selection,
@@ -861,6 +875,11 @@ int main(int argc, char** argv) {
     };
 
     const auto reloadConfig = [&] {
+        if (isDapControlRunning()) {
+            transient_status_message = "Config reload is disabled while debugger is running";
+            return;
+        }
+
         app_config                            = loadAppConfig("roundtable.toml");
         keybindings                           = app_config.keybindings;
         active_theme_preset                   = app_config.theme_preset;
@@ -888,6 +907,11 @@ int main(int argc, char** argv) {
     };
 
     const auto applyBreakpointsToActiveSession = [&]() {
+        if (isDapControlRunning()) {
+            transient_status_message = "Breakpoints cannot be changed while debugger is running";
+            return;
+        }
+
         auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
         if (dap_session == nullptr) {
             transient_status_message = "Breakpoint queued for next DAP launch";
@@ -909,27 +933,46 @@ int main(int argc, char** argv) {
             transient_status_message = action_name + " is only available in DAP sessions";
             return;
         }
+        if (isDapControlRunning()) {
+            transient_status_message = "Debugger is already running";
+            return;
+        }
         if (debug_selection.thread_id == 0) {
             transient_status_message = action_name + " failed: no active thread";
             return;
         }
 
-        const auto response = send_request(*dap_session, static_cast<int>(debug_selection.thread_id));
-        if (!response.success) {
-            transient_status_message = action_name + " failed: " + response.error_message;
-            return;
-        }
+        const int thread_id = static_cast<int>(debug_selection.thread_id);
+        async_dap_control_state.running.store(true);
+        transient_status_message = "Running: " + stopped_action_name;
 
-        if (!dap_session->waitForStoppedEvent()) {
-            transient_status_message = "Wait after " + stopped_action_name + " failed: " + dap_session->getLastError();
-            return;
-        }
+        async_dap_control_state.worker = std::jthread([&, dap_session, action_name, stopped_action_name, send_request, thread_id](std::stop_token) mutable {
+            bool        success = false;
+            std::string error_message;
 
-        updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+            const auto  response = send_request(*dap_session, thread_id);
+            if (!response.success) {
+                error_message = action_name + " failed: " + response.error_message;
+            } else if (!dap_session->waitForStoppedEvent()) {
+                error_message = "Wait after " + stopped_action_name + " failed: " + dap_session->getLastError();
+            } else {
+                success = true;
+            }
 
-        memory_navigation_offset = 0;
-        transient_status_message = "Stopped after " + stopped_action_name;
-        refreshAllPanes();
+            screen.Post(Closure([&, dap_session, success, error_message, stopped_action_name] {
+                async_dap_control_state.running.store(false);
+                if (!success) {
+                    transient_status_message = error_message;
+                    return;
+                }
+
+                updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+
+                memory_navigation_offset = 0;
+                transient_status_message = "Stopped after " + stopped_action_name;
+                refreshAllPanes();
+            }));
+        });
     };
 
     const auto continueActiveDapSession = [&]() {
@@ -1207,11 +1250,21 @@ int main(int argc, char** argv) {
         }
 
         if (event == Event::Character('q')) {
+            if (isDapControlRunning()) {
+                transient_status_message = "Debugger is running; wait for stop before quitting";
+                return true;
+            }
+
             screen.Exit();
             return true;
         }
 
         if (event == Event::Character('r')) {
+            if (isDapControlRunning()) {
+                transient_status_message = "Refresh is disabled while debugger is running";
+                return true;
+            }
+
             refreshAllPanes();
             return true;
         }

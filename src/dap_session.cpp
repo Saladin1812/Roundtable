@@ -1308,6 +1308,11 @@ bool CDapDebugSession::waitForStoppedEvent() {
             last_error_.clear();
             return true;
         }
+
+        if (message.type == "event" && (message.event_name == "terminated" || message.event_name == "exited")) {
+            last_error_ = "DAP session ended before a stopped event";
+            return false;
+        }
     }
 }
 

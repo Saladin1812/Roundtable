@@ -615,6 +615,19 @@ TEST_CASE("CDapDebugSession completes configurationDone and sees a stopped event
     REQUIRE(dap_session.waitForStoppedEvent());
 }
 
+TEST_CASE("CDapDebugSession stops waiting when the session terminates") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"event","event":"terminated"})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+
+    REQUIRE(dap_session.connect());
+    CHECK_FALSE(dap_session.waitForStoppedEvent());
+    CHECK(dap_session.getLastError() == "DAP session ended before a stopped event");
+}
+
 TEST_CASE("CDapDebugSession sends configurationDone without waiting for later responses") {
     auto             transport = std::make_unique<CStubDapTransport>(true);
 
