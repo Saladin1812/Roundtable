@@ -49,6 +49,16 @@ namespace {
         REMOVE,
     };
 
+    enum class eDebuggerSessionState : std::uint8_t {
+        MOCK,
+        LAUNCHING,
+        STOPPED,
+        RUNNING,
+        TERMINATING,
+        TERMINATED,
+        ERROR,
+    };
+
     struct SPromptState {
         ePromptMode mode = ePromptMode::NONE;
         std::string input;
@@ -66,6 +76,7 @@ namespace {
         std::atomic_bool running             = false;
         std::atomic_bool pause_requested     = false;
         std::atomic_bool terminate_requested = false;
+        std::atomic_bool quit_requested      = false;
         std::jthread     worker;
     };
 
@@ -112,6 +123,7 @@ namespace {
         std::uint64_t                  disassembly_start_address = 0x401000;
         std::string                    disassembly_memory_reference;
         std::string                    status_message;
+        eDebuggerSessionState          state = eDebuggerSessionState::ERROR;
     };
 
     bool initializeDapSession(CDapDebugSession& dap_session, std::string& error_message) {
@@ -691,6 +703,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = "Mock session",
+                .state                        = eDebuggerSessionState::MOCK,
             };
         }
 
@@ -713,6 +726,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = "DAP launch config is incomplete and autodetect failed",
+                .state                        = eDebuggerSessionState::ERROR,
             };
         }
 
@@ -724,6 +738,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = bootstrap_error_message,
+                .state                        = eDebuggerSessionState::ERROR,
             };
         }
 
@@ -743,6 +758,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = "DAP launch failed: " + dap_session->getLastError(),
+                .state                        = eDebuggerSessionState::ERROR,
             };
         }
 
@@ -753,6 +769,7 @@ namespace {
                 .disassembly_start_address    = 0x401000,
                 .disassembly_memory_reference = "",
                 .status_message               = bootstrap_error_message,
+                .state                        = eDebuggerSessionState::ERROR,
             };
         }
 
@@ -764,6 +781,7 @@ namespace {
                 .disassembly_start_address    = disassembly_start_address,
                 .disassembly_memory_reference = disassembly_memory_reference,
                 .status_message               = bootstrap_error_message,
+                .state                        = eDebuggerSessionState::ERROR,
             };
         }
 
@@ -773,6 +791,7 @@ namespace {
             .disassembly_start_address    = disassembly_start_address,
             .disassembly_memory_reference = disassembly_memory_reference,
             .status_message               = selection.thread_id != 0 ? "DAP launch session" : "DAP launch session without active thread",
+            .state                        = eDebuggerSessionState::STOPPED,
         };
     }
 
@@ -799,6 +818,7 @@ int main(int argc, char** argv) {
     SDebugSelection                debug_selection              = bootstrap_result.selection;
     std::uint64_t                  disassembly_start_address    = bootstrap_result.disassembly_start_address;
     std::string                    disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
+    eDebuggerSessionState          session_state                = bootstrap_result.state;
     std::string                    base_session_status          = bootstrap_result.status_message;
     std::string                    transient_status_message     = {};
     std::int64_t                   memory_navigation_offset     = 0;
@@ -850,28 +870,47 @@ int main(int argc, char** argv) {
 
     const auto           isDapControlRunning = [&] { return async_dap_control_state.running.load(); };
 
-    const auto           refreshAllPanes = [&] {
+    const auto           clearDebuggerPanes = [&] {
+        locals_pane.rows                = {"Session terminated"};
+        memory_view_pane.rows           = {"Session terminated"};
+        disassembly_pane.rows           = {"Session terminated"};
+        watch_list_pane.rows            = {"Session terminated"};
+        locals_pane.selected_index      = 0;
+        memory_view_pane.selected_index = 0;
+        disassembly_pane.selected_index = 0;
+        watch_list_pane.selected_index  = 0;
+        memory_target_label             = {};
+        memory_context                  = {};
+    };
+
+    const auto isSessionTerminated = [&] { return session_state == eDebuggerSessionState::TERMINATED; };
+
+    const auto refreshAllPanes = [&] {
         if (isDapControlRunning()) {
+            return;
+        }
+        if (isSessionTerminated()) {
+            clearDebuggerPanes();
             return;
         }
 
         SPaneRefreshInputs inputs = {
-                      .debug_session                = *debug_session,
-                      .debug_selection              = debug_selection,
-                      .disassembly_start_address    = disassembly_start_address,
-                      .disassembly_memory_reference = disassembly_memory_reference,
-                      .memory_navigation_offset     = memory_navigation_offset,
-                      .focused_pane                 = focused_pane,
-                      .watch_expressions            = watch_expressions,
-                      .manual_memory_target         = manual_memory_target,
+            .debug_session                = *debug_session,
+            .debug_selection              = debug_selection,
+            .disassembly_start_address    = disassembly_start_address,
+            .disassembly_memory_reference = disassembly_memory_reference,
+            .memory_navigation_offset     = memory_navigation_offset,
+            .focused_pane                 = focused_pane,
+            .watch_expressions            = watch_expressions,
+            .manual_memory_target         = manual_memory_target,
         };
         SPaneRefreshOutputs outputs = {
-                      .locals_pane         = locals_pane,
-                      .memory_view_pane    = memory_view_pane,
-                      .disassembly_pane    = disassembly_pane,
-                      .watch_list_pane     = watch_list_pane,
-                      .memory_target_label = memory_target_label,
-                      .memory_context      = memory_context,
+            .locals_pane         = locals_pane,
+            .memory_view_pane    = memory_view_pane,
+            .disassembly_pane    = disassembly_pane,
+            .watch_list_pane     = watch_list_pane,
+            .memory_target_label = memory_target_label,
+            .memory_context      = memory_context,
         };
         refreshPaneRows(inputs, outputs);
     };
@@ -901,6 +940,7 @@ int main(int argc, char** argv) {
         debug_selection              = bootstrap_result.selection;
         disassembly_start_address    = bootstrap_result.disassembly_start_address;
         disassembly_memory_reference = bootstrap_result.disassembly_memory_reference;
+        session_state                = bootstrap_result.state;
         base_session_status          = bootstrap_result.status_message;
         transient_status_message     = "Config reloaded";
         memory_navigation_offset     = 0;
@@ -911,6 +951,10 @@ int main(int argc, char** argv) {
     const auto applyBreakpointsToActiveSession = [&]() {
         if (isDapControlRunning()) {
             transient_status_message = "Breakpoints cannot be changed while debugger is running";
+            return;
+        }
+        if (session_state == eDebuggerSessionState::TERMINATED || session_state == eDebuggerSessionState::ERROR) {
+            transient_status_message = "Breakpoint queued for next DAP launch";
             return;
         }
 
@@ -935,6 +979,14 @@ int main(int argc, char** argv) {
             transient_status_message = action_name + " is only available in DAP sessions";
             return;
         }
+        if (session_state == eDebuggerSessionState::TERMINATED) {
+            transient_status_message = action_name + " is unavailable after session termination";
+            return;
+        }
+        if (session_state == eDebuggerSessionState::ERROR) {
+            transient_status_message = action_name + " is unavailable because the session failed to start";
+            return;
+        }
         if (isDapControlRunning()) {
             transient_status_message = "Debugger is already running";
             return;
@@ -945,6 +997,7 @@ int main(int argc, char** argv) {
         }
 
         const int thread_id = static_cast<int>(debug_selection.thread_id);
+        session_state       = eDebuggerSessionState::RUNNING;
         async_dap_control_state.running.store(true);
         async_dap_control_state.pause_requested.store(false);
         async_dap_control_state.terminate_requested.store(false);
@@ -972,11 +1025,18 @@ int main(int argc, char** argv) {
                 async_dap_control_state.terminate_requested.store(false);
                 if (terminated) {
                     async_dap_control_state.pause_requested.store(false);
+                    session_state            = eDebuggerSessionState::TERMINATED;
+                    base_session_status      = "Session terminated";
                     transient_status_message = "Terminated";
+                    clearDebuggerPanes();
+                    if (async_dap_control_state.quit_requested.exchange(false)) {
+                        screen.Exit();
+                    }
                     return;
                 }
                 if (!success) {
                     async_dap_control_state.pause_requested.store(false);
+                    session_state            = eDebuggerSessionState::ERROR;
                     transient_status_message = error_message;
                     return;
                 }
@@ -984,8 +1044,10 @@ int main(int argc, char** argv) {
                 updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
 
                 const std::string completed_action_name = async_dap_control_state.pause_requested.exchange(false) ? "pause" : stopped_action_name;
-                memory_navigation_offset                = 0;
-                transient_status_message                = "Stopped after " + completed_action_name;
+                async_dap_control_state.quit_requested.store(false);
+                session_state            = eDebuggerSessionState::STOPPED;
+                memory_navigation_offset = 0;
+                transient_status_message = "Stopped after " + completed_action_name;
                 refreshAllPanes();
             }));
             screen.PostEvent(Event::Custom);
@@ -1050,10 +1112,27 @@ int main(int argc, char** argv) {
         transient_status_message = "Pause requested";
     };
 
-    const auto terminateActiveDapSession = [&]() {
+    const auto disconnectActiveDapSession = [&](bool exit_after_disconnect) {
         auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
         if (dap_session == nullptr) {
+            if (exit_after_disconnect) {
+                screen.Exit();
+                return;
+            }
             transient_status_message = "Terminate is only available in DAP sessions";
+            return;
+        }
+        if (session_state == eDebuggerSessionState::TERMINATED || session_state == eDebuggerSessionState::ERROR) {
+            if (exit_after_disconnect) {
+                screen.Exit();
+                return;
+            }
+            transient_status_message = "Session is already terminated";
+            return;
+        }
+        if (session_state == eDebuggerSessionState::TERMINATING) {
+            async_dap_control_state.quit_requested.store(exit_after_disconnect || async_dap_control_state.quit_requested.load());
+            transient_status_message = "Terminate already requested";
             return;
         }
         if (isDapControlRunning()) {
@@ -1062,15 +1141,19 @@ int main(int argc, char** argv) {
                 return;
             }
 
+            session_state = eDebuggerSessionState::TERMINATING;
             async_dap_control_state.terminate_requested.store(true);
             async_dap_control_state.pause_requested.store(false);
+            async_dap_control_state.quit_requested.store(exit_after_disconnect);
             transient_status_message = "Terminate requested";
             return;
         }
 
+        session_state = eDebuggerSessionState::TERMINATING;
         async_dap_control_state.running.store(true);
         async_dap_control_state.pause_requested.store(false);
         async_dap_control_state.terminate_requested.store(true);
+        async_dap_control_state.quit_requested.store(exit_after_disconnect);
         transient_status_message = "Terminate requested";
 
         async_dap_control_state.worker = std::jthread([&, dap_session](std::stop_token) {
@@ -1089,10 +1172,39 @@ int main(int argc, char** argv) {
                 async_dap_control_state.running.store(false);
                 async_dap_control_state.pause_requested.store(false);
                 async_dap_control_state.terminate_requested.store(false);
-                transient_status_message = success ? "Terminated" : error_message;
+                if (!success) {
+                    async_dap_control_state.quit_requested.store(false);
+                    session_state            = eDebuggerSessionState::ERROR;
+                    transient_status_message = error_message;
+                    return;
+                }
+
+                session_state            = eDebuggerSessionState::TERMINATED;
+                base_session_status      = "Session terminated";
+                transient_status_message = "Terminated";
+                clearDebuggerPanes();
+                if (async_dap_control_state.quit_requested.exchange(false)) {
+                    screen.Exit();
+                }
             }));
             screen.PostEvent(Event::Custom);
         });
+    };
+
+    const auto terminateActiveDapSession = [&]() { disconnectActiveDapSession(false); };
+
+    const auto quitApplication = [&]() {
+        if (session_state == eDebuggerSessionState::TERMINATING) {
+            async_dap_control_state.quit_requested.store(true);
+            transient_status_message = "Waiting for debugger disconnect before quitting";
+            return;
+        }
+        if (isDapControlRunning() || session_state == eDebuggerSessionState::STOPPED || session_state == eDebuggerSessionState::RUNNING) {
+            disconnectActiveDapSession(true);
+            return;
+        }
+
+        screen.Exit();
     };
 
     refreshAllPanes();
@@ -1338,18 +1450,17 @@ int main(int argc, char** argv) {
         }
 
         if (event == Event::Character('q')) {
-            if (isDapControlRunning()) {
-                transient_status_message = "Debugger is running; wait for stop before quitting";
-                return true;
-            }
-
-            screen.Exit();
+            quitApplication();
             return true;
         }
 
         if (event == Event::Character('r')) {
             if (isDapControlRunning()) {
                 transient_status_message = "Refresh is disabled while debugger is running";
+                return true;
+            }
+            if (session_state == eDebuggerSessionState::TERMINATED) {
+                transient_status_message = "Session terminated; reload config to start again";
                 return true;
             }
 
