@@ -843,9 +843,9 @@ TEST_CASE("CDapDebugSession steps out from a stepOut response") {
 }
 
 TEST_CASE("CDapDebugSession sends a pause request without reading a response") {
-    auto              transport     = std::make_unique<CStubDapTransport>(true);
+    auto               transport     = std::make_unique<CStubDapTransport>(true);
     CStubDapTransport* transport_ptr = transport.get();
-    CDapDebugSession  dap_session(std::move(transport), {});
+    CDapDebugSession   dap_session(std::move(transport), {});
 
     REQUIRE(dap_session.connect());
     REQUIRE(dap_session.sendPauseRequest({

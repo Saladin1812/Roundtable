@@ -354,6 +354,6 @@ class CDapDebugSession : public IDebugSession {
     SDapEndpointConfig             endpoint_config_;
     SDapAdapterCapabilities        adapter_capabilities_;
     std::string                    last_error_;
-    int                            next_sequence_number_ = 1;
+    int                            next_sequence_number_  = 1;
     bool                           pending_stopped_event_ = false;
 };

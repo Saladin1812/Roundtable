@@ -197,16 +197,25 @@ std::string commandDescription(eCommand command) {
 
 std::vector<SKeybinding> defaultKeybindings() {
     return {
-        {.keys = "Space l", .command = eCommand::FOCUS_LOCALS},       {.keys = "Space m", .command = eCommand::FOCUS_MEMORY},
-        {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},  {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},
-        {.keys = "Space n", .command = eCommand::ADD_WATCH},          {.keys = "Space e", .command = eCommand::EDIT_WATCH},
-        {.keys = "Space x", .command = eCommand::REMOVE_WATCH},       {.keys = "Space b", .command = eCommand::ADD_BREAKPOINT},
-        {.keys = "Space g", .command = eCommand::SET_MEMORY_TARGET},  {.keys = "Space C", .command = eCommand::CONTINUE_EXECUTION},
-        {.keys = "Space o", .command = eCommand::STEP_OVER},          {.keys = "Space i", .command = eCommand::STEP_INTO},
-        {.keys = "Space O", .command = eCommand::STEP_OUT},           {.keys = "Space p", .command = eCommand::PAUSE_EXECUTION},
+        {.keys = "Space l", .command = eCommand::FOCUS_LOCALS},
+        {.keys = "Space m", .command = eCommand::FOCUS_MEMORY},
+        {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},
+        {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},
+        {.keys = "Space n", .command = eCommand::ADD_WATCH},
+        {.keys = "Space e", .command = eCommand::EDIT_WATCH},
+        {.keys = "Space x", .command = eCommand::REMOVE_WATCH},
+        {.keys = "Space b", .command = eCommand::ADD_BREAKPOINT},
+        {.keys = "Space g", .command = eCommand::SET_MEMORY_TARGET},
+        {.keys = "Space C", .command = eCommand::CONTINUE_EXECUTION},
+        {.keys = "Space o", .command = eCommand::STEP_OVER},
+        {.keys = "Space i", .command = eCommand::STEP_INTO},
+        {.keys = "Space O", .command = eCommand::STEP_OUT},
+        {.keys = "Space p", .command = eCommand::PAUSE_EXECUTION},
         {.keys = "Space c", .command = eCommand::CYCLE_THEME},
-        {.keys = "Space R", .command = eCommand::RELOAD_CONFIG},      {.keys = "Space t", .command = eCommand::TOGGLE_MEMORY},
-        {.keys = "Space a", .command = eCommand::TOGGLE_DISASSEMBLY}, {.keys = "Space ?", .command = eCommand::TOGGLE_SHORTCUTS_HELP},
+        {.keys = "Space R", .command = eCommand::RELOAD_CONFIG},
+        {.keys = "Space t", .command = eCommand::TOGGLE_MEMORY},
+        {.keys = "Space a", .command = eCommand::TOGGLE_DISASSEMBLY},
+        {.keys = "Space ?", .command = eCommand::TOGGLE_SHORTCUTS_HELP},
     };
 }
 
