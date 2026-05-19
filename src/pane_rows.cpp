@@ -31,7 +31,11 @@ namespace {
             return std::nullopt;
         }
 
-        return "unavailable in F:" + frame_index + " T:" + thread_id;
+        std::string formatted_error = "unavailable in F:";
+        formatted_error += frame_index;
+        formatted_error += " T:";
+        formatted_error += thread_id;
+        return formatted_error;
     }
 
     std::string formatWatchError(const std::string& error_message) {

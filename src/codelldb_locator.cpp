@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <sstream>
 #include <system_error>
 
 namespace {
@@ -106,6 +107,55 @@ namespace {
         return std::nullopt;
     }
 
+    char pathListSeparator() {
+#if defined(_WIN32)
+        return ';';
+#else
+        return ':';
+#endif
+    }
+
+    std::string adapterExecutableName() {
+#if defined(_WIN32)
+        return "codelldb.exe";
+#else
+        return "codelldb";
+#endif
+    }
+
+    std::optional<SCodeLldbInstall> findPathInstall() {
+        const char* path_value = std::getenv("PATH");
+        if (path_value == nullptr || *path_value == '\0') {
+            return std::nullopt;
+        }
+
+        std::stringstream path_stream(path_value);
+        std::string       path_entry;
+        while (std::getline(path_stream, path_entry, pathListSeparator())) {
+            if (path_entry.empty()) {
+                continue;
+            }
+
+            const auto      command_path = std::filesystem::path(path_entry) / adapterExecutableName();
+            std::error_code error_code;
+            if (!std::filesystem::exists(command_path, error_code)) {
+                continue;
+            }
+
+            const auto adapter_directory = command_path.parent_path();
+            if (adapter_directory.filename() != "adapter") {
+                continue;
+            }
+
+            const auto extension_root = adapter_directory.parent_path();
+            if (const auto install = installFromRoot(extension_root, "path:" + command_path.string()); install.has_value()) {
+                return install;
+            }
+        }
+
+        return std::nullopt;
+    }
+
 } // namespace
 
 std::optional<SCodeLldbInstall> findCodeLldbInstall(const std::vector<std::filesystem::path>& additional_roots) {
@@ -127,6 +177,10 @@ std::optional<SCodeLldbInstall> findCodeLldbInstall(const std::vector<std::files
         if (const auto install = installFromRoot(root, "mason:" + root.string()); install.has_value()) {
             return install;
         }
+    }
+
+    if (const auto install = findPathInstall(); install.has_value()) {
+        return install;
     }
 
     return std::nullopt;
