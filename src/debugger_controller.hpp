@@ -48,7 +48,7 @@ struct SSessionBootstrapResult {
     eDebuggerSessionState          state = eDebuggerSessionState::ERROR;
 };
 
-bool                    configureDapBreakpoints(CDapDebugSession& dap_session, const std::vector<SSourceBreakpointConfig>& breakpoints, std::string& error_message);
+bool                    configureDapBreakpoints(CDapDebugSession& dap_session, std::vector<SSourceBreakpointConfig>& breakpoints, std::string& error_message);
 SStoppedContext         updateDapStoppedContext(CDapDebugSession& dap_session, SDebugSelection& selection, std::uint64_t& disassembly_start_address,
                                                 std::string& disassembly_memory_reference);
-SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config);
+SSessionBootstrapResult bootstrapSession(SAppConfig& app_config);

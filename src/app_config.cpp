@@ -246,8 +246,13 @@ std::optional<SSourceBreakpointConfig> parseSourceBreakpointConfig(std::string v
     }
 
     return SSourceBreakpointConfig{
-        .source_path = std::filesystem::path(source_path),
-        .line        = line,
+        .source_path          = std::filesystem::path(source_path),
+        .line                 = line,
+        .enabled              = true,
+        .adapter_status_known = false,
+        .adapter_verified     = false,
+        .adapter_line         = 0,
+        .adapter_message      = "",
     };
 }
 

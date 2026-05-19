@@ -116,6 +116,7 @@ if(BUILD_TESTING)
     tests/codelldb_locator_tests.cpp
     tests/cli_options_tests.cpp
     tests/dap_session_tests.cpp
+    tests/debugger_controller_tests.cpp
     tests/debug_session_tests.cpp
     tests/pane_rows_tests.cpp
     tests/pane_state_tests.cpp

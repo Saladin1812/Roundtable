@@ -181,7 +181,26 @@ namespace {
         for (std::size_t index = 0; index < breakpoints.size(); ++index) {
             const auto&       breakpoint = breakpoints[index];
             const std::string state      = breakpoint.enabled ? "[x] " : "[ ] ";
-            rows.push_back(state + "#" + std::to_string(index) + " :" + std::to_string(breakpoint.line) + " " + compactPathForStatus(breakpoint.source_path.string()));
+            std::string       status;
+            if (!breakpoint.enabled) {
+                status = "off";
+            } else if (!breakpoint.adapter_status_known) {
+                status = "pending";
+            } else if (breakpoint.adapter_verified) {
+                status = "ok";
+            } else {
+                status = "fail";
+            }
+
+            std::string row = state + status + " #" + std::to_string(index) + " :" + std::to_string(breakpoint.line) + " " + compactPathForStatus(breakpoint.source_path.string());
+            if (breakpoint.enabled && breakpoint.adapter_status_known && breakpoint.adapter_line > 0 && breakpoint.adapter_line != breakpoint.line) {
+                row += " -> :" + std::to_string(breakpoint.adapter_line);
+            }
+            if (breakpoint.enabled && !breakpoint.adapter_message.empty()) {
+                row += " - " + breakpoint.adapter_message;
+            }
+
+            rows.push_back(std::move(row));
         }
 
         return rows;

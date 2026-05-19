@@ -610,10 +610,16 @@ TEST_CASE("CDapDebugSession builds a setBreakpoints request message") {
 
 TEST_CASE("CDapDebugSession parses a setBreakpoints response message") {
     const SDapSetBreakpointsResponse response = CDapDebugSession::parseSetBreakpointsResponseMessage(
-        R"({"type":"response","command":"setBreakpoints","success":true,"body":{"breakpoints":[{"verified":true,"line":42},{"verified":true,"line":51}]}})");
+        R"({"type":"response","command":"setBreakpoints","success":true,"body":{"breakpoints":[{"verified":true,"line":42},{"verified":false,"line":51,"message":"No source found"}]}})");
 
     CHECK(response.success);
     CHECK(response.breakpoint_count == 2);
+    REQUIRE(response.breakpoints.size() == 2);
+    CHECK(response.breakpoints[0].verified);
+    CHECK(response.breakpoints[0].line == 42);
+    CHECK_FALSE(response.breakpoints[1].verified);
+    CHECK(response.breakpoints[1].line == 51);
+    CHECK(response.breakpoints[1].message == "No source found");
     CHECK(response.error_message.empty());
 }
 
@@ -645,6 +651,9 @@ TEST_CASE("CDapDebugSession sets breakpoints from a setBreakpoints response") {
 
     CHECK(response.success);
     CHECK(response.breakpoint_count == 1);
+    REQUIRE(response.breakpoints.size() == 1);
+    CHECK(response.breakpoints[0].verified);
+    CHECK(response.breakpoints[0].line == 42);
 }
 
 TEST_CASE("CDapDebugSession launches after receiving initialized event and launch response") {

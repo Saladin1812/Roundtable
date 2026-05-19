@@ -64,18 +64,28 @@ namespace {
 
 } // namespace
 
-bool configureDapBreakpoints(CDapDebugSession& dap_session, const std::vector<SSourceBreakpointConfig>& breakpoints, std::string& error_message) {
+bool configureDapBreakpoints(CDapDebugSession& dap_session, std::vector<SSourceBreakpointConfig>& breakpoints, std::string& error_message) {
     std::map<std::string, std::vector<SDapSourceBreakpoint>> breakpoints_by_source;
-    for (const auto& breakpoint : breakpoints) {
+    std::map<std::string, std::vector<std::size_t>>          breakpoint_indices_by_source;
+
+    for (std::size_t index = 0; index < breakpoints.size(); ++index) {
+        auto& breakpoint                = breakpoints[index];
+        breakpoint.adapter_status_known = false;
+        breakpoint.adapter_verified     = false;
+        breakpoint.adapter_line         = 0;
+        breakpoint.adapter_message.clear();
+
         if (breakpoint.line <= 0 || breakpoint.source_path.empty()) {
             continue;
         }
 
-        auto& source_breakpoints = breakpoints_by_source[std::filesystem::absolute(breakpoint.source_path).string()];
+        const auto source_path        = std::filesystem::absolute(breakpoint.source_path).string();
+        auto&      source_breakpoints = breakpoints_by_source[source_path];
         if (breakpoint.enabled) {
             source_breakpoints.push_back({
                 .line = breakpoint.line,
             });
+            breakpoint_indices_by_source[source_path].push_back(index);
         }
     }
 
@@ -88,6 +98,22 @@ bool configureDapBreakpoints(CDapDebugSession& dap_session, const std::vector<SS
         if (!response.success) {
             error_message = "DAP setBreakpoints failed: " + response.error_message;
             return false;
+        }
+
+        const auto indices_iterator = breakpoint_indices_by_source.find(source_path);
+        if (indices_iterator == breakpoint_indices_by_source.end()) {
+            continue;
+        }
+
+        const auto& breakpoint_indices = indices_iterator->second;
+        const auto  status_count       = std::min(breakpoint_indices.size(), response.breakpoints.size());
+        for (std::size_t status_index = 0; status_index < status_count; ++status_index) {
+            auto&       breakpoint          = breakpoints[breakpoint_indices[status_index]];
+            const auto& resolved_breakpoint = response.breakpoints[status_index];
+            breakpoint.adapter_status_known = true;
+            breakpoint.adapter_verified     = resolved_breakpoint.verified;
+            breakpoint.adapter_line         = resolved_breakpoint.line;
+            breakpoint.adapter_message      = resolved_breakpoint.message;
         }
     }
 
@@ -147,7 +173,7 @@ SStoppedContext updateDapStoppedContext(CDapDebugSession& dap_session, SDebugSel
     return stopped_context;
 }
 
-SSessionBootstrapResult bootstrapSession(const SAppConfig& app_config) {
+SSessionBootstrapResult bootstrapSession(SAppConfig& app_config) {
     if (app_config.session_mode == eSessionMode::MOCK) {
         return {
             .session                      = std::make_unique<CMockDebugSession>(),

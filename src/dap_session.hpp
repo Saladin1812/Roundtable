@@ -212,15 +212,22 @@ struct SDapSourceBreakpoint {
     std::int64_t line = 0;
 };
 
+struct SDapResolvedBreakpoint {
+    bool         verified = false;
+    std::int64_t line     = 0;
+    std::string  message;
+};
+
 struct SDapSetBreakpointsRequest {
     std::string                       source_path;
     std::vector<SDapSourceBreakpoint> breakpoints;
 };
 
 struct SDapSetBreakpointsResponse {
-    bool        success          = false;
-    std::size_t breakpoint_count = 0;
-    std::string error_message;
+    bool                                success          = false;
+    std::size_t                         breakpoint_count = 0;
+    std::vector<SDapResolvedBreakpoint> breakpoints;
+    std::string                         error_message;
 };
 
 struct SDapLaunchRequest {

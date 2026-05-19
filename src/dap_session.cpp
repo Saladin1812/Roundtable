@@ -605,6 +605,24 @@ namespace {
         return std::stoi(response_message.substr(value_start, value_end - value_start));
     }
 
+    std::optional<bool> extractJsonBoolField(const std::string& response_message, const std::string& field_name) {
+        const auto field_pattern = "\"" + field_name + "\":";
+        const auto field_start   = response_message.find(field_pattern);
+        if (field_start == std::string::npos) {
+            return std::nullopt;
+        }
+
+        const auto value_start = field_start + field_pattern.size();
+        if (response_message.compare(value_start, 4, "true") == 0) {
+            return true;
+        }
+        if (response_message.compare(value_start, 5, "false") == 0) {
+            return false;
+        }
+
+        return std::nullopt;
+    }
+
     std::vector<std::string> extractTopLevelObjectsFromArray(const std::string& response_message, const std::string& array_name) {
         std::vector<std::string> objects;
 
@@ -1103,7 +1121,23 @@ SDapSetBreakpointsResponse CDapDebugSession::parseSetBreakpointsResponseMessage(
         return response;
     }
 
-    response.breakpoint_count = extractTopLevelObjectsFromArray(response_message, "breakpoints").size();
+    for (const auto& breakpoint_message : extractTopLevelObjectsFromArray(response_message, "breakpoints")) {
+        SDapResolvedBreakpoint breakpoint = {};
+
+        if (const auto verified = extractJsonBoolField(breakpoint_message, "verified"); verified.has_value()) {
+            breakpoint.verified = verified.value();
+        }
+        if (const auto line = extractJsonIntegerField(breakpoint_message, "line"); line.has_value()) {
+            breakpoint.line = line.value();
+        }
+        if (const auto message = extractJsonStringField(breakpoint_message, "message"); message.has_value()) {
+            breakpoint.message = message.value();
+        }
+
+        response.breakpoints.push_back(std::move(breakpoint));
+    }
+
+    response.breakpoint_count = response.breakpoints.size();
     return response;
 }
 
@@ -2019,6 +2053,7 @@ SDapSetBreakpointsResponse CDapDebugSession::setBreakpoints(const SDapSetBreakpo
         return {
             .success          = false,
             .breakpoint_count = 0,
+            .breakpoints      = {},
             .error_message    = "DAP session is not connected",
         };
     }
@@ -2030,6 +2065,7 @@ SDapSetBreakpointsResponse CDapDebugSession::setBreakpoints(const SDapSetBreakpo
         return {
             .success          = false,
             .breakpoint_count = 0,
+            .breakpoints      = {},
             .error_message    = error_message,
         };
     }
@@ -2040,6 +2076,7 @@ SDapSetBreakpointsResponse CDapDebugSession::setBreakpoints(const SDapSetBreakpo
             return {
                 .success          = false,
                 .breakpoint_count = 0,
+                .breakpoints      = {},
                 .error_message    = error_message,
             };
         }

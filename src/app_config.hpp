@@ -26,8 +26,12 @@ struct SDapLaunchConfig {
 
 struct SSourceBreakpointConfig {
     std::filesystem::path source_path;
-    std::int64_t          line    = 0;
-    bool                  enabled = true;
+    std::int64_t          line                 = 0;
+    bool                  enabled              = true;
+    bool                  adapter_status_known = false;
+    bool                  adapter_verified     = false;
+    std::int64_t          adapter_line         = 0;
+    std::string           adapter_message;
 };
 
 struct SCodeLldbAutoDetectConfig {
