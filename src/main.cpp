@@ -972,8 +972,9 @@ int main(int argc, char** argv) {
             return;
         }
 
-        const SAppConfig previous_config = app_config;
-        SAppConfig       reloaded_config = loadAppConfig(config_path);
+        const SAppConfig previous_config    = app_config;
+        const auto       config_load_result = loadAppConfigWithDiagnostics(config_path);
+        SAppConfig       reloaded_config    = config_load_result.config;
         applyCliOverrides(cli_options, reloaded_config);
 
         app_config  = std::move(reloaded_config);
@@ -1013,6 +1014,13 @@ int main(int argc, char** argv) {
             transient_status_message = launch_settings_changed ? "Config reloaded; launch changes apply on restart" : "Config reloaded";
         } else {
             applyBootstrapResult(bootstrapSession(app_config), "Config reloaded");
+        }
+
+        if (!config_load_result.diagnostics.empty()) {
+            transient_status_message = "Config reload warning: " + config_load_result.diagnostics.front();
+            if (config_load_result.diagnostics.size() > 1) {
+                transient_status_message += " (+" + std::to_string(config_load_result.diagnostics.size() - 1) + " more)";
+            }
         }
 
         memory_navigation_offset = 0;

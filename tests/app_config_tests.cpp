@@ -165,3 +165,47 @@ TEST_CASE("loadAppConfig reads codelldb auto-detect configuration from TOML") {
 
     std::filesystem::remove(config_path);
 }
+
+TEST_CASE("loadAppConfigWithDiagnostics reports malformed config entries") {
+    const std::filesystem::path config_path = std::filesystem::temp_directory_path() / "roundtable-test-invalid-config.toml";
+
+    {
+        std::ofstream config_stream(config_path);
+        config_stream << "[session]\n";
+        config_stream << "mode = \"invalid_mode\"\n";
+        config_stream << "startup_focus = \"bad_pane\"\n";
+        config_stream << "\n";
+        config_stream << "[views]\n";
+        config_stream << "show_memory = maybe\n";
+        config_stream << "\n";
+        config_stream << "[theme]\n";
+        config_stream << "selected_background = \"not-a-color\"\n";
+        config_stream << "\n";
+        config_stream << "[breakpoints]\n";
+        config_stream << "entries = [\"missing-line\"]\n";
+        config_stream << "\n";
+        config_stream << "[keybindings]\n";
+        config_stream << "not_a_command = \"Space Z\"\n";
+        config_stream << "\n";
+        config_stream << "[unknown]\n";
+        config_stream << "value = true\n";
+        config_stream << "not valid\n";
+    }
+
+    const SAppConfigLoadResult result = loadAppConfigWithDiagnostics(config_path.string());
+
+    const auto                 has_diagnostic = [&](const std::string& text) {
+        return std::ranges::any_of(result.diagnostics, [&](const std::string& diagnostic) { return diagnostic.find(text) != std::string::npos; });
+    };
+
+    CHECK(has_diagnostic("unknown session mode"));
+    CHECK(has_diagnostic("unknown startup_focus"));
+    CHECK(has_diagnostic("invalid boolean for views.show_memory"));
+    CHECK(has_diagnostic("invalid or unknown theme color"));
+    CHECK(has_diagnostic("invalid breakpoint entry"));
+    CHECK(has_diagnostic("unknown keybinding command"));
+    CHECK(has_diagnostic("unknown section [unknown]"));
+    CHECK(has_diagnostic("expected key = value"));
+
+    std::filesystem::remove(config_path);
+}

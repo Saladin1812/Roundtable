@@ -53,5 +53,11 @@ struct SAppConfig {
     std::vector<SKeybinding>             keybindings           = defaultKeybindings();
 };
 
+struct SAppConfigLoadResult {
+    SAppConfig               config;
+    std::vector<std::string> diagnostics;
+};
+
 SAppConfig                             loadAppConfig(const std::string& config_path);
+SAppConfigLoadResult                   loadAppConfigWithDiagnostics(const std::string& config_path);
 std::optional<SSourceBreakpointConfig> parseSourceBreakpointConfig(std::string value);
