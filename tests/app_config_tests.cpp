@@ -72,6 +72,7 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "focus_breakpoints = \"Space P\"\n";
         config_stream << "remove_breakpoint = \"Space D\"\n";
         config_stream << "toggle_breakpoint = \"Space E\"\n";
+        config_stream << "choose_profile = \"Space P\"\n";
         config_stream << "toggle_shortcuts_help = \"Space h\"\n";
         config_stream << "cycle_theme = \"Space C\"\n";
     }
@@ -147,6 +148,10 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_BREAKPOINT; });
     REQUIRE(toggle_breakpoint_keybinding != config.keybindings.end());
     CHECK(toggle_breakpoint_keybinding->keys == "Space E");
+
+    const auto choose_profile_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::CHOOSE_PROFILE; });
+    REQUIRE(choose_profile_keybinding != config.keybindings.end());
+    CHECK(choose_profile_keybinding->keys == "Space P");
 
     const auto help_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_SHORTCUTS_HELP; });
     REQUIRE(help_keybinding != config.keybindings.end());

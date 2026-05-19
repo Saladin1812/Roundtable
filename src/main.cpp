@@ -66,6 +66,11 @@ namespace {
         std::size_t  selected_index  = 0;
     };
 
+    struct SProfilePickerState {
+        bool        active         = false;
+        std::size_t selected_index = 0;
+    };
+
     struct SAsyncDapControlState {
         std::atomic_bool running             = false;
         std::atomic_bool pause_requested     = false;
@@ -104,6 +109,16 @@ namespace {
     std::size_t themePresetIndex(eThemePreset preset) {
         for (std::size_t index = 0; index < kThemePresets.size(); ++index) {
             if (kThemePresets[index] == preset) {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
+    std::size_t launchProfileIndex(const std::vector<SLaunchProfileConfig>& profiles, const std::string& active_profile) {
+        for (std::size_t index = 0; index < profiles.size(); ++index) {
+            if (profiles[index].name == active_profile) {
                 return index;
             }
         }
@@ -665,6 +680,34 @@ namespace {
         return window(text(" Theme Picker ") | color(theme.title), vbox(rows)) | size(WIDTH, EQUAL, 30) | color(theme.overlay_border);
     }
 
+    ftxui::Element renderProfilePickerOverlay(const SProfilePickerState& profile_picker_state, const std::vector<SLaunchProfileConfig>& profiles, const SAppTheme& theme) {
+        using namespace ftxui;
+
+        Elements rows = {
+            text("j/k or arrows to select") | color(theme.chrome),
+            text("Return restart  Esc cancel") | color(theme.chrome),
+            separator(),
+        };
+
+        for (std::size_t index = 0; index < profiles.size(); ++index) {
+            Element row = hbox({
+                              text(index == profile_picker_state.selected_index ? "> " : "  "),
+                              text(profiles[index].name),
+                          }) |
+                color(theme.chrome);
+            if (index == profile_picker_state.selected_index) {
+                row = row | bgcolor(theme.selected_background) | color(theme.selected_foreground);
+            }
+            rows.push_back(row);
+        }
+
+        if (profiles.empty()) {
+            rows.push_back(text("No launch profiles configured") | color(theme.chrome));
+        }
+
+        return window(text(" Launch Profile ") | color(theme.title), vbox(rows)) | size(WIDTH, EQUAL, 36) | color(theme.overlay_border);
+    }
+
     ftxui::Element renderLeaderPopup(const std::vector<SKeybinding>& keybindings, eFocusPane focused_pane, const SAppTheme& theme) {
         using namespace ftxui;
 
@@ -795,6 +838,7 @@ int main(int argc, char** argv) {
                       .original_preset = active_theme_preset,
                       .selected_index  = themePresetIndex(active_theme_preset),
     };
+    SProfilePickerState   profile_picker_state    = {};
     eWatchActionMode      watch_action_mode       = eWatchActionMode::NONE;
     eBreakpointActionMode breakpoint_action_mode  = eBreakpointActionMode::NONE;
     SAsyncDapControlState async_dap_control_state = {};
@@ -994,6 +1038,7 @@ int main(int argc, char** argv) {
             .original_preset = active_theme_preset,
             .selected_index  = themePresetIndex(active_theme_preset),
         };
+        profile_picker_state = {};
 
         if (session_state == eDebuggerSessionState::STOPPED) {
             applyBreakpointsToActiveSession();
@@ -1373,6 +1418,13 @@ int main(int argc, char** argv) {
             });
         }
 
+        if (profile_picker_state.active) {
+            content = dbox({
+                content,
+                renderProfilePickerOverlay(profile_picker_state, app_config.launch_profiles, app_theme) | center,
+            });
+        }
+
         if (prompt_state.mode != ePromptMode::NONE) {
             content = dbox({
                 content,
@@ -1523,6 +1575,48 @@ int main(int argc, char** argv) {
             active_theme_preset      = kThemePresets[theme_picker_state.selected_index];
             app_theme                = buildActiveTheme(active_theme_preset);
             transient_status_message = "Theme preview: " + themePresetName(active_theme_preset);
+            return true;
+        }
+
+        if (profile_picker_state.active) {
+            if (event == Event::Escape) {
+                profile_picker_state     = {};
+                transient_status_message = {};
+                return true;
+            }
+
+            if (event == Event::Return) {
+                if (profile_picker_state.selected_index >= app_config.launch_profiles.size()) {
+                    profile_picker_state     = {};
+                    transient_status_message = "No launch profiles configured";
+                    return true;
+                }
+
+                const std::string profile_name = app_config.launch_profiles[profile_picker_state.selected_index].name;
+                profile_picker_state           = {};
+                if (!applyLaunchProfile(app_config, profile_name)) {
+                    transient_status_message = "Launch profile not found: " + profile_name;
+                    return true;
+                }
+
+                restartSession();
+                return true;
+            }
+
+            const auto move_up   = event == Event::ArrowUp || event == Event::Character('k');
+            const auto move_down = event == Event::ArrowDown || event == Event::Character('j');
+
+            if (move_up && profile_picker_state.selected_index > 0) {
+                --profile_picker_state.selected_index;
+            } else if (move_down && profile_picker_state.selected_index + 1 < app_config.launch_profiles.size()) {
+                ++profile_picker_state.selected_index;
+            } else if (!(move_up || move_down)) {
+                return true;
+            }
+
+            if (profile_picker_state.selected_index < app_config.launch_profiles.size()) {
+                transient_status_message = "Profile: " + app_config.launch_profiles[profile_picker_state.selected_index].name;
+            }
             return true;
         }
 
@@ -1748,6 +1842,22 @@ int main(int argc, char** argv) {
                             .selected_index  = themePresetIndex(active_theme_preset),
                         };
                         transient_status_message = "Theme preview: " + themePresetName(active_theme_preset);
+                        return true;
+                    }
+                    if (command.value() == eCommand::CHOOSE_PROFILE) {
+                        if (app_config.launch_profiles.empty()) {
+                            transient_status_message = "No launch profiles configured";
+                            return true;
+                        }
+                        if (isDapControlRunning() || session_state == eDebuggerSessionState::RUNNING || session_state == eDebuggerSessionState::TERMINATING) {
+                            transient_status_message = "Profile picker is unavailable while debugger is running";
+                            return true;
+                        }
+                        profile_picker_state = {
+                            .active         = true,
+                            .selected_index = launchProfileIndex(app_config.launch_profiles, app_config.active_profile),
+                        };
+                        transient_status_message = "Profile: " + app_config.launch_profiles[profile_picker_state.selected_index].name;
                         return true;
                     }
                     if (command.value() == eCommand::RELOAD_CONFIG) {
