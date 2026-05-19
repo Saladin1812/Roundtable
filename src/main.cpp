@@ -907,33 +907,6 @@ int main(int argc, char** argv) {
         memory_navigation_offset     = 0;
     };
 
-    const auto reloadConfig = [&] {
-        if (isDapControlRunning()) {
-            transient_status_message = "Config reload is disabled while debugger is running";
-            return;
-        }
-
-        app_config = loadAppConfig(config_path);
-        applyCliOverrides(cli_options, app_config);
-        keybindings                           = app_config.keybindings;
-        watch_expressions                     = buildInitialWatchExpressions(app_config);
-        active_theme_preset                   = app_config.theme_preset;
-        app_theme                             = buildActiveTheme(active_theme_preset);
-        view_visibility.show_memory_view      = app_config.show_memory_view;
-        view_visibility.show_disassembly_view = app_config.show_disassembly_view;
-        focused_pane                          = normalizeFocusedPane(focused_pane, view_visibility);
-
-        theme_picker_state = {
-            .active          = false,
-            .original_preset = active_theme_preset,
-            .selected_index  = themePresetIndex(active_theme_preset),
-        };
-
-        applyBootstrapResult(bootstrapSession(app_config), "Config reloaded");
-
-        refreshAllPanes();
-    };
-
     const auto clearBreakpointSourceInActiveSession = [&](const std::filesystem::path& source_path) {
         if (session_state != eDebuggerSessionState::STOPPED) {
             return true;
@@ -990,6 +963,60 @@ int main(int argc, char** argv) {
         }
 
         transient_status_message = "Breakpoint applied";
+    };
+
+    const auto reloadConfig = [&] {
+        if (isDapControlRunning() || session_state == eDebuggerSessionState::RUNNING || session_state == eDebuggerSessionState::LAUNCHING ||
+            session_state == eDebuggerSessionState::TERMINATING) {
+            transient_status_message = "Config reload is disabled while debugger is running";
+            return;
+        }
+
+        const SAppConfig previous_config = app_config;
+        SAppConfig       reloaded_config = loadAppConfig(config_path);
+        applyCliOverrides(cli_options, reloaded_config);
+
+        app_config  = std::move(reloaded_config);
+        keybindings = app_config.keybindings;
+        if (!app_config.watches.empty() || session_state != eDebuggerSessionState::STOPPED) {
+            watch_expressions = buildInitialWatchExpressions(app_config);
+        }
+        active_theme_preset                   = app_config.theme_preset;
+        app_theme                             = buildActiveTheme(active_theme_preset);
+        view_visibility.show_memory_view      = app_config.show_memory_view;
+        view_visibility.show_disassembly_view = app_config.show_disassembly_view;
+        focused_pane                          = normalizeFocusedPane(focused_pane, view_visibility);
+
+        theme_picker_state = {
+            .active          = false,
+            .original_preset = active_theme_preset,
+            .selected_index  = themePresetIndex(active_theme_preset),
+        };
+
+        if (session_state == eDebuggerSessionState::STOPPED) {
+            applyBreakpointsToActiveSession();
+            for (const auto& previous_breakpoint : previous_config.breakpoints) {
+                if (!hasBreakpointForSource(previous_breakpoint.source_path)) {
+                    clearBreakpointSourceInActiveSession(previous_breakpoint.source_path);
+                }
+            }
+
+            if (auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get()); dap_session != nullptr) {
+                stopped_context = updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+            }
+
+            const bool launch_settings_changed = previous_config.session_mode != app_config.session_mode || previous_config.dap_launch.command != app_config.dap_launch.command ||
+                previous_config.dap_launch.liblldb_path != app_config.dap_launch.liblldb_path || previous_config.dap_launch.program != app_config.dap_launch.program ||
+                previous_config.dap_launch.arguments != app_config.dap_launch.arguments ||
+                previous_config.dap_launch.working_directory != app_config.dap_launch.working_directory ||
+                previous_config.dap_launch.stop_on_entry != app_config.dap_launch.stop_on_entry || previous_config.dap_launch.continue_once != app_config.dap_launch.continue_once;
+            transient_status_message = launch_settings_changed ? "Config reloaded; launch changes apply on restart" : "Config reloaded";
+        } else {
+            applyBootstrapResult(bootstrapSession(app_config), "Config reloaded");
+        }
+
+        memory_navigation_offset = 0;
+        refreshAllPanes();
     };
 
     const auto executeDapControl = [&](const std::string& action_name, const std::string& stopped_action_name, auto send_request) {
