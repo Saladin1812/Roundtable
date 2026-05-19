@@ -1,6 +1,48 @@
 #include "pane_rows.hpp"
 
+#include <optional>
 #include <sstream>
+
+namespace {
+
+    std::optional<std::string> formatScopedWatchError(const std::string& error_message) {
+        constexpr std::string_view prefix           = "not available in frame #";
+        constexpr std::string_view thread_marker    = " T:";
+        constexpr std::string_view detail_separator = ": ";
+
+        if (!error_message.starts_with(prefix)) {
+            return std::nullopt;
+        }
+
+        const auto frame_start  = prefix.size();
+        const auto thread_start = error_message.find(thread_marker, frame_start);
+        if (thread_start == std::string::npos) {
+            return std::nullopt;
+        }
+
+        const auto detail_start = error_message.find(detail_separator, thread_start + thread_marker.size());
+        if (detail_start == std::string::npos) {
+            return std::nullopt;
+        }
+
+        const std::string frame_index = error_message.substr(frame_start, thread_start - frame_start);
+        const std::string thread_id   = error_message.substr(thread_start + thread_marker.size(), detail_start - thread_start - thread_marker.size());
+        if (frame_index.empty() || thread_id.empty()) {
+            return std::nullopt;
+        }
+
+        return "unavailable in F:" + frame_index + " T:" + thread_id;
+    }
+
+    std::string formatWatchError(const std::string& error_message) {
+        if (const auto scoped_error = formatScopedWatchError(error_message); scoped_error.has_value()) {
+            return scoped_error.value();
+        }
+
+        return error_message;
+    }
+
+} // namespace
 
 std::vector<std::string> formatLocalsPaneRows(const std::vector<SLocalVariable>& locals) {
     std::vector<std::string> rows;
@@ -19,7 +61,7 @@ std::vector<std::string> formatWatchListPaneRows(const std::vector<SWatchResult>
 
     for (const auto& watch_result : watch_results) {
         if (!watch_result.error_message.empty()) {
-            rows.push_back(watch_result.expression + " ! " + watch_result.error_message);
+            rows.push_back(watch_result.expression + " ! " + formatWatchError(watch_result.error_message));
             continue;
         }
 

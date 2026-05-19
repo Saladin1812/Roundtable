@@ -43,13 +43,21 @@ TEST_CASE("formatWatchListPaneRows formats watch results and errors") {
             .memory_reference = "",
             .error_message    = "Expression could not be evaluated",
         },
+        {
+            .expression       = "sample_value",
+            .value            = "",
+            .type             = "",
+            .memory_reference = "",
+            .error_message    = "not available in frame #1 T:19: error: use of undeclared identifier 'sample_value'",
+        },
     };
 
     const std::vector<std::string> rows = formatWatchListPaneRows(watch_results);
 
-    REQUIRE(rows.size() == 2);
+    REQUIRE(rows.size() == 3);
     CHECK(rows[0] == "a = 42 : int");
     CHECK(rows[1] == "missing_value ! Expression could not be evaluated");
+    CHECK(rows[2] == "sample_value ! unavailable in F:1 T:19");
 }
 
 TEST_CASE("formatDisassemblyPaneRows formats disassembly instructions") {
