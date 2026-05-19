@@ -23,6 +23,8 @@ struct SAppTheme {
     ftxui::Color variable_type                              = ftxui::Color::White;
     ftxui::Color selected_variable_name                     = ftxui::Color::White;
     ftxui::Color selected_variable_type                     = ftxui::Color::White;
+    ftxui::Color watch_error                                = ftxui::Color::RedLight;
+    ftxui::Color selected_watch_error                       = ftxui::Color::RedLight;
     ftxui::Color memory_address                             = ftxui::Color::YellowLight;
     ftxui::Color memory_hex                                 = ftxui::Color::White;
     ftxui::Color memory_ascii                               = ftxui::Color::GreenLight;
@@ -54,6 +56,8 @@ struct SThemeOverrides {
     std::optional<ftxui::Color> variable_type;
     std::optional<ftxui::Color> selected_variable_name;
     std::optional<ftxui::Color> selected_variable_type;
+    std::optional<ftxui::Color> watch_error;
+    std::optional<ftxui::Color> selected_watch_error;
     std::optional<ftxui::Color> memory_address;
     std::optional<ftxui::Color> memory_hex;
     std::optional<ftxui::Color> memory_ascii;

@@ -149,6 +149,10 @@ namespace {
             overrides.selected_variable_name = parsed_color;
         } else if (key == "selected_variable_type") {
             overrides.selected_variable_type = parsed_color;
+        } else if (key == "watch_error") {
+            overrides.watch_error = parsed_color;
+        } else if (key == "selected_watch_error") {
+            overrides.selected_watch_error = parsed_color;
         } else if (key == "memory_address") {
             overrides.memory_address = parsed_color;
         } else if (key == "memory_hex") {

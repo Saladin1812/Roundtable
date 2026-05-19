@@ -37,6 +37,8 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "selected_foreground = \"#eeeeee\"\n";
         config_stream << "variable_name = \"#abcdef\"\n";
         config_stream << "selected_variable_type = \"#123456\"\n";
+        config_stream << "watch_error = \"#ff1122\"\n";
+        config_stream << "selected_watch_error = \"#ee3344\"\n";
         config_stream << "memory_address = \"#aa5500\"\n";
         config_stream << "selected_memory_hex = \"#445566\"\n";
         config_stream << "memory_highlight_ascii_background = \"#203040\"\n";
@@ -90,6 +92,8 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     REQUIRE(config.theme_overrides.selected_foreground.has_value());
     REQUIRE(config.theme_overrides.variable_name.has_value());
     REQUIRE(config.theme_overrides.selected_variable_type.has_value());
+    REQUIRE(config.theme_overrides.watch_error.has_value());
+    REQUIRE(config.theme_overrides.selected_watch_error.has_value());
     REQUIRE(config.theme_overrides.memory_address.has_value());
     REQUIRE(config.theme_overrides.selected_memory_hex.has_value());
     REQUIRE(config.theme_overrides.memory_highlight_ascii_background.has_value());
@@ -98,6 +102,8 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     CHECK(config.theme_overrides.selected_foreground.value() == ftxui::Color::RGB(0xee, 0xee, 0xee));
     CHECK(config.theme_overrides.variable_name.value() == ftxui::Color::RGB(0xab, 0xcd, 0xef));
     CHECK(config.theme_overrides.selected_variable_type.value() == ftxui::Color::RGB(0x12, 0x34, 0x56));
+    CHECK(config.theme_overrides.watch_error.value() == ftxui::Color::RGB(0xff, 0x11, 0x22));
+    CHECK(config.theme_overrides.selected_watch_error.value() == ftxui::Color::RGB(0xee, 0x33, 0x44));
     CHECK(config.theme_overrides.memory_address.value() == ftxui::Color::RGB(0xaa, 0x55, 0x00));
     CHECK(config.theme_overrides.selected_memory_hex.value() == ftxui::Color::RGB(0x44, 0x55, 0x66));
     CHECK(config.theme_overrides.memory_highlight_ascii_background.value() == ftxui::Color::RGB(0x20, 0x30, 0x40));

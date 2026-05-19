@@ -40,6 +40,8 @@ SAppTheme buildTheme(eThemePreset preset) {
                 .variable_type                              = ftxui::Color::YellowLight,
                 .selected_variable_name                     = ftxui::Color::White,
                 .selected_variable_type                     = ftxui::Color::YellowLight,
+                .watch_error                                = ftxui::Color::RedLight,
+                .selected_watch_error                       = ftxui::Color::RedLight,
                 .memory_address                             = ftxui::Color::YellowLight,
                 .memory_hex                                 = ftxui::Color::White,
                 .memory_ascii                               = ftxui::Color::GreenLight,
@@ -71,6 +73,8 @@ SAppTheme buildTheme(eThemePreset preset) {
                 .variable_type                              = ftxui::Color::BlueLight,
                 .selected_variable_name                     = ftxui::Color::White,
                 .selected_variable_type                     = ftxui::Color::CyanLight,
+                .watch_error                                = ftxui::Color::RedLight,
+                .selected_watch_error                       = ftxui::Color::RedLight,
                 .memory_address                             = ftxui::Color::BlueLight,
                 .memory_hex                                 = ftxui::Color::White,
                 .memory_ascii                               = ftxui::Color::CyanLight,
@@ -102,6 +106,8 @@ SAppTheme buildTheme(eThemePreset preset) {
                 .variable_type                              = ftxui::Color::YellowLight,
                 .selected_variable_name                     = ftxui::Color::White,
                 .selected_variable_type                     = ftxui::Color::YellowLight,
+                .watch_error                                = ftxui::Color::RedLight,
+                .selected_watch_error                       = ftxui::Color::RedLight,
                 .memory_address                             = ftxui::Color::YellowLight,
                 .memory_hex                                 = ftxui::Color::White,
                 .memory_ascii                               = ftxui::Color::GreenLight,
@@ -134,6 +140,8 @@ SAppTheme buildTheme(eThemePreset preset) {
                 .variable_type                              = ftxui::Color::CyanLight,
                 .selected_variable_name                     = ftxui::Color::White,
                 .selected_variable_type                     = ftxui::Color::CyanLight,
+                .watch_error                                = ftxui::Color::RedLight,
+                .selected_watch_error                       = ftxui::Color::RedLight,
                 .memory_address                             = ftxui::Color::YellowLight,
                 .memory_hex                                 = ftxui::Color::White,
                 .memory_ascii                               = ftxui::Color::GreenLight,
@@ -167,6 +175,8 @@ SAppTheme applyThemeOverrides(SAppTheme theme, const SThemeOverrides& overrides)
     applyOverride(theme.variable_type, overrides.variable_type);
     applyOverride(theme.selected_variable_name, overrides.selected_variable_name);
     applyOverride(theme.selected_variable_type, overrides.selected_variable_type);
+    applyOverride(theme.watch_error, overrides.watch_error);
+    applyOverride(theme.selected_watch_error, overrides.selected_watch_error);
     applyOverride(theme.memory_address, overrides.memory_address);
     applyOverride(theme.memory_hex, overrides.memory_hex);
     applyOverride(theme.memory_ascii, overrides.memory_ascii);

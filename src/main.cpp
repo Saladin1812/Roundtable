@@ -377,6 +377,15 @@ namespace {
         return std::make_tuple(row.substr(0, error_separator), row.substr(error_separator + 3), std::string{}, false);
     }
 
+    std::optional<std::tuple<std::string, std::string>> splitWatchErrorRow(const std::string& row) {
+        const auto error_separator = row.find(" ! ");
+        if (error_separator == std::string::npos) {
+            return std::nullopt;
+        }
+
+        return std::make_tuple(row.substr(0, error_separator), row.substr(error_separator + 3));
+    }
+
     std::vector<std::string> splitMemoryByteTokens(const std::string& hex_bytes) {
         std::vector<std::string> tokens;
         std::size_t              token_start = 0;
@@ -519,8 +528,17 @@ namespace {
                 row_element = text(row) | color(is_selected ? theme.selected_foreground : theme.chrome);
             }
         } else if (pane_title.find("Watch List") != std::string::npos) {
-            const auto watch_parts = splitWatchRow(row);
-            if (watch_parts.has_value()) {
+            const auto watch_parts       = splitWatchRow(row);
+            const auto watch_error_parts = splitWatchErrorRow(row);
+            if (watch_error_parts.has_value()) {
+                const auto& [expression, error] = watch_error_parts.value();
+                const auto error_color          = is_selected ? theme.selected_watch_error : theme.watch_error;
+                row_element                     = hbox({
+                    text(expression) | color(error_color),
+                    text(" ! ") | color(error_color),
+                    text(error) | color(error_color),
+                });
+            } else if (watch_parts.has_value()) {
                 const auto& [expression, middle, type, has_type] = watch_parts.value();
                 if (has_type) {
                     row_element = hbox({
