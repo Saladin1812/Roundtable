@@ -193,6 +193,32 @@ namespace {
         return rows;
     }
 
+    std::vector<std::string> formatThreadPaneRows(const std::vector<SStoppedThread>& threads) {
+        std::vector<std::string> rows;
+        rows.reserve(threads.size());
+
+        for (std::size_t index = 0; index < threads.size(); ++index) {
+            const auto& thread = threads[index];
+            std::string row    = "#" + std::to_string(index) + " T:" + std::to_string(thread.id);
+            if (!thread.name.empty()) {
+                row += " " + thread.name;
+            }
+            rows.push_back(std::move(row));
+        }
+
+        return rows;
+    }
+
+    std::size_t selectedThreadIndex(const std::vector<SStoppedThread>& threads, std::int64_t thread_id) {
+        for (std::size_t index = 0; index < threads.size(); ++index) {
+            if (threads[index].id == thread_id) {
+                return index;
+            }
+        }
+
+        return 0;
+    }
+
     std::vector<std::string> formatBreakpointPaneRows(const std::vector<SSourceBreakpointConfig>& breakpoints) {
         std::vector<std::string> rows;
         rows.reserve(breakpoints.size());
@@ -234,8 +260,13 @@ namespace {
 
     int commandPriority(eCommand command, eFocusPane focused_pane) {
         switch (focused_pane) {
+            case eFocusPane::THREADS:
+                if (command == eCommand::FOCUS_STACK || command == eCommand::FOCUS_LOCALS) {
+                    return 0;
+                }
+                break;
             case eFocusPane::STACK:
-                if (command == eCommand::FOCUS_LOCALS || command == eCommand::FOCUS_MEMORY) {
+                if (command == eCommand::FOCUS_THREADS || command == eCommand::FOCUS_LOCALS || command == eCommand::FOCUS_MEMORY) {
                     return 0;
                 }
                 break;
@@ -253,7 +284,7 @@ namespace {
                 }
                 break;
             case eFocusPane::LOCALS:
-                if (command == eCommand::SET_MEMORY_TARGET || command == eCommand::FOCUS_MEMORY || command == eCommand::FOCUS_STACK) {
+                if (command == eCommand::SET_MEMORY_TARGET || command == eCommand::FOCUS_MEMORY || command == eCommand::FOCUS_THREADS || command == eCommand::FOCUS_STACK) {
                     return 1;
                 }
                 break;
@@ -771,6 +802,10 @@ int main(int argc, char** argv) {
          .title = " Locals ",
          .rows  = {},
     };
+    SSelectablePaneState threads_pane = {
+        .title = " Threads ",
+        .rows  = {},
+    };
     SSelectablePaneState stack_pane = {
         .title = " Stack ",
         .rows  = {},
@@ -798,12 +833,14 @@ int main(int argc, char** argv) {
 
     const auto           clearDebuggerPanes = [&] {
         locals_pane.rows                = {"Session terminated"};
+        threads_pane.rows               = {"Session terminated"};
         stack_pane.rows                 = {"Session terminated"};
         memory_view_pane.rows           = {"Session terminated"};
         disassembly_pane.rows           = {"Session terminated"};
         watch_list_pane.rows            = {"Session terminated"};
         breakpoints_pane.rows           = {"Session terminated"};
         locals_pane.selected_index      = 0;
+        threads_pane.selected_index     = 0;
         stack_pane.selected_index       = 0;
         memory_view_pane.selected_index = 0;
         disassembly_pane.selected_index = 0;
@@ -825,6 +862,10 @@ int main(int argc, char** argv) {
             return;
         }
 
+        threads_pane.title = " Threads [" + std::to_string(stopped_context.threads.size()) + "] ";
+        threads_pane.rows  = formatThreadPaneRows(stopped_context.threads);
+        threads_pane.selected_index =
+            std::min(selectedThreadIndex(stopped_context.threads, debug_selection.thread_id), threads_pane.rows.empty() ? 0UL : threads_pane.rows.size() - 1);
         stack_pane.title                = " Stack [T:" + std::to_string(debug_selection.thread_id) + "] ";
         stack_pane.rows                 = formatStackPaneRows(stopped_context.stack_frames);
         stack_pane.selected_index       = std::min(debug_selection.frame_index, stack_pane.rows.empty() ? 0UL : stack_pane.rows.size() - 1);
@@ -1227,12 +1268,14 @@ int main(int argc, char** argv) {
         const std::string current_status  = transient_status_message.empty() ? base_session_status : transient_status_message;
         const std::string stopped_at      = formatStoppedLocation(stopped_context.location);
         Element           locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
+        Element           threads         = renderSelectablePane(threads_pane, focused_pane == eFocusPane::THREADS, app_theme);
         Element           stack           = renderSelectablePane(stack_pane, focused_pane == eFocusPane::STACK, app_theme);
         Element           watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
         Element           breakpoints     = renderSelectablePane(breakpoints_pane, focused_pane == eFocusPane::BREAKPOINTS, app_theme);
         Element           auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme, memory_context);
         Element           left_column     = vbox({
             locals | flex,
+            threads | size(HEIGHT, EQUAL, 6),
             stack | size(HEIGHT, EQUAL, 8),
         });
         Element           right_column    = vbox({
@@ -1721,6 +1764,24 @@ int main(int argc, char** argv) {
             focused_pane = advanceFocusPane(focused_pane, view_visibility);
             refreshAllPanes();
             return true;
+        }
+
+        if (focused_pane == eFocusPane::THREADS) {
+            const bool handled = handleVerticalNavigation(event, threads_pane);
+            if (handled) {
+                if (threads_pane.selected_index < stopped_context.threads.size()) {
+                    debug_selection.thread_id   = stopped_context.threads[threads_pane.selected_index].id;
+                    debug_selection.frame_index = 0;
+                    memory_navigation_offset    = 0;
+
+                    if (auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get()); dap_session != nullptr && session_state == eDebuggerSessionState::STOPPED) {
+                        stopped_context = updateDapStoppedContext(*dap_session, debug_selection, disassembly_start_address, disassembly_memory_reference);
+                    }
+
+                    refreshAllPanes();
+                }
+            }
+            return handled;
         }
 
         if (focused_pane == eFocusPane::STACK) {

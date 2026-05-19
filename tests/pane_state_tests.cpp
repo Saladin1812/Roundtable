@@ -13,7 +13,8 @@ TEST_CASE("advanceFocusPane cycles through each pane in order") {
     CHECK(advanceFocusPane(eFocusPane::DISASSEMBLY_VIEW, view_visibility) == eFocusPane::WATCH_LIST);
     CHECK(advanceFocusPane(eFocusPane::WATCH_LIST, view_visibility) == eFocusPane::BREAKPOINTS);
     CHECK(advanceFocusPane(eFocusPane::BREAKPOINTS, view_visibility) == eFocusPane::LOCALS);
-    CHECK(advanceFocusPane(eFocusPane::LOCALS, view_visibility) == eFocusPane::STACK);
+    CHECK(advanceFocusPane(eFocusPane::LOCALS, view_visibility) == eFocusPane::THREADS);
+    CHECK(advanceFocusPane(eFocusPane::THREADS, view_visibility) == eFocusPane::STACK);
     CHECK(advanceFocusPane(eFocusPane::STACK, view_visibility) == eFocusPane::MEMORY_VIEW);
 }
 
@@ -23,7 +24,8 @@ TEST_CASE("advanceFocusPane skips hidden center panes") {
         .show_disassembly_view = true,
     };
 
-    CHECK(advanceFocusPane(eFocusPane::LOCALS, view_visibility) == eFocusPane::STACK);
+    CHECK(advanceFocusPane(eFocusPane::LOCALS, view_visibility) == eFocusPane::THREADS);
+    CHECK(advanceFocusPane(eFocusPane::THREADS, view_visibility) == eFocusPane::STACK);
     CHECK(advanceFocusPane(eFocusPane::STACK, view_visibility) == eFocusPane::DISASSEMBLY_VIEW);
     CHECK(advanceFocusPane(eFocusPane::DISASSEMBLY_VIEW, view_visibility) == eFocusPane::WATCH_LIST);
     CHECK(advanceFocusPane(eFocusPane::WATCH_LIST, view_visibility) == eFocusPane::BREAKPOINTS);
@@ -48,6 +50,8 @@ TEST_CASE("executeCommand toggles views and normalizes focus") {
 TEST_CASE("parseCommandName returns commands for known names") {
     REQUIRE(parseCommandName("focus_memory").has_value());
     CHECK(parseCommandName("focus_memory").value() == eCommand::FOCUS_MEMORY);
+    REQUIRE(parseCommandName("focus_threads").has_value());
+    CHECK(parseCommandName("focus_threads").value() == eCommand::FOCUS_THREADS);
     REQUIRE(parseCommandName("focus_stack").has_value());
     CHECK(parseCommandName("focus_stack").value() == eCommand::FOCUS_STACK);
     REQUIRE(parseCommandName("focus_breakpoints").has_value());

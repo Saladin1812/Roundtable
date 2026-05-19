@@ -63,6 +63,7 @@ candidate_roots = [
 
 [keybindings]
 focus_locals = "Space l"
+focus_threads = "Space u"
 focus_stack = "Space s"
 focus_memory = "Space m"
 focus_disassembly = "Space d"

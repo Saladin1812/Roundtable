@@ -61,6 +61,7 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "entries = [\"sample_value\", \"ptr->field\"]\n";
         config_stream << "\n";
         config_stream << "[keybindings]\n";
+        config_stream << "focus_threads = \"Space U\"\n";
         config_stream << "focus_memory = \"Space x\"\n";
         config_stream << "focus_breakpoints = \"Space P\"\n";
         config_stream << "remove_breakpoint = \"Space D\"\n";
@@ -111,6 +112,10 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     REQUIRE(config.watches.size() == 2);
     CHECK(config.watches[0] == "sample_value");
     CHECK(config.watches[1] == "ptr->field");
+
+    const auto threads_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_THREADS; });
+    REQUIRE(threads_keybinding != config.keybindings.end());
+    CHECK(threads_keybinding->keys == "Space U");
 
     const auto memory_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_MEMORY; });
     REQUIRE(memory_keybinding != config.keybindings.end());

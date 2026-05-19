@@ -126,7 +126,19 @@ SStoppedContext updateDapStoppedContext(CDapDebugSession& dap_session, SDebugSel
 
     auto            threads = dap_session.getThreads();
     if (threads.success && !threads.threads.empty()) {
-        selection.thread_id = threads.threads.front().id;
+        stopped_context.threads.reserve(threads.threads.size());
+        for (const auto& thread : threads.threads) {
+            stopped_context.threads.push_back({
+                .id   = thread.id,
+                .name = thread.name,
+            });
+        }
+
+        const auto selected_thread = std::ranges::find_if(threads.threads, [&](const SDapThread& thread) { return thread.id == selection.thread_id; });
+        if (selected_thread == threads.threads.end()) {
+            selection.thread_id   = threads.threads.front().id;
+            selection.frame_index = 0;
+        }
     }
 
     disassembly_start_address = 0x401000;
@@ -183,6 +195,7 @@ SSessionBootstrapResult bootstrapSession(SAppConfig& app_config) {
             .stopped_context =
                 {
                     .location = {.function_name = "main", .source_path = "mock_sample.cpp", .line = 12, .column = 5},
+                    .threads  = {{.id = 1, .name = "main thread"}},
                     .stack_frames =
                         {
                             {.function_name = "main", .source_path = "mock_sample.cpp", .line = 12, .column = 5},

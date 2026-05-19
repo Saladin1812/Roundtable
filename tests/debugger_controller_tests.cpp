@@ -78,3 +78,31 @@ TEST_CASE("configureDapBreakpoints stores adapter verification status on enabled
     CHECK(breakpoints[2].adapter_line == 51);
     CHECK(breakpoints[2].adapter_message == "No source found");
 }
+
+TEST_CASE("updateDapStoppedContext preserves the selected thread when it is still available") {
+    auto  transport     = std::make_unique<CControllerStubDapTransport>();
+    auto* raw_transport = transport.get();
+    raw_transport->setReadMessages({
+        R"({"type":"response","command":"threads","success":true,"body":{"threads":[{"id":1,"name":"main"},{"id":2,"name":"worker"}]}})",
+        R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":2001,"name":"worker_loop","line":9,"column":1,"source":{"path":"/tmp/worker.cpp"}}]}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+    REQUIRE(dap_session.connect());
+
+    SDebugSelection selection = {
+        .thread_id   = 2,
+        .frame_index = 0,
+    };
+    std::uint64_t         disassembly_start_address = 0;
+    std::string           disassembly_memory_reference;
+
+    const SStoppedContext stopped_context = updateDapStoppedContext(dap_session, selection, disassembly_start_address, disassembly_memory_reference);
+
+    CHECK(selection.thread_id == 2);
+    REQUIRE(stopped_context.threads.size() == 2);
+    CHECK(stopped_context.threads[1].id == 2);
+    CHECK(stopped_context.threads[1].name == "worker");
+    REQUIRE(stopped_context.stack_frames.size() == 1);
+    CHECK(stopped_context.stack_frames[0].function_name == "worker_loop");
+}

@@ -203,6 +203,9 @@ namespace {
         if (value == "locals") {
             return eFocusPane::LOCALS;
         }
+        if (value == "threads") {
+            return eFocusPane::THREADS;
+        }
         if (value == "stack") {
             return eFocusPane::STACK;
         }

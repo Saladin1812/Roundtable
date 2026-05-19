@@ -33,8 +33,14 @@ struct SStoppedStackFrame {
     int         column = 0;
 };
 
+struct SStoppedThread {
+    std::int64_t id = 0;
+    std::string  name;
+};
+
 struct SStoppedContext {
     SStoppedLocation                location;
+    std::vector<SStoppedThread>     threads;
     std::vector<SStoppedStackFrame> stack_frames;
 };
 
