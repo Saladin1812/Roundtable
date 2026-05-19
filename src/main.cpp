@@ -124,6 +124,25 @@ namespace {
         return source_path.substr(last_separator + 1);
     }
 
+    std::string compactPathWithParent(std::string source_path) {
+        if (source_path.empty()) {
+            return "<unknown>";
+        }
+
+        const auto filename_start = source_path.find_last_of("/\\");
+        if (filename_start == std::string::npos) {
+            return source_path;
+        }
+
+        const auto parent_end   = filename_start;
+        const auto parent_start = source_path.find_last_of("/\\", parent_end == 0 ? 0 : parent_end - 1);
+        if (parent_start == std::string::npos) {
+            return source_path;
+        }
+
+        return ".../" + source_path.substr(parent_start + 1);
+    }
+
     std::string formatStoppedLocation(const SStoppedLocation& stopped_location) {
         if (stopped_location.function_name.empty() && stopped_location.source_path.empty() && stopped_location.line == 0) {
             return {};
@@ -192,7 +211,7 @@ namespace {
                 status = "fail";
             }
 
-            std::string row = state + status + " #" + std::to_string(index) + " :" + std::to_string(breakpoint.line) + " " + compactPathForStatus(breakpoint.source_path.string());
+            std::string row = state + status + " #" + std::to_string(index) + " :" + std::to_string(breakpoint.line) + " " + compactPathWithParent(breakpoint.source_path.string());
             if (breakpoint.enabled && breakpoint.adapter_status_known && breakpoint.adapter_line > 0 && breakpoint.adapter_line != breakpoint.line) {
                 row += " -> :" + std::to_string(breakpoint.adapter_line);
             }
