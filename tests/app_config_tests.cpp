@@ -315,16 +315,61 @@ TEST_CASE("loadAppConfigWithBaseConfig preserves user UI config while overlaying
     std::filesystem::remove(overlay_path);
 }
 
+TEST_CASE("defaultAppConfigSearchPaths includes platform user config locations") {
+    CEnvironmentVariableGuard   xdg_guard("XDG_CONFIG_HOME");
+    CEnvironmentVariableGuard   home_guard("HOME");
+    CEnvironmentVariableGuard   app_data_guard("APPDATA");
+    CEnvironmentVariableGuard   local_app_data_guard("LOCALAPPDATA");
+
+    const std::filesystem::path config_home     = std::filesystem::temp_directory_path() / "roundtable-test-search-config";
+    const std::filesystem::path local_data_home = std::filesystem::temp_directory_path() / "roundtable-test-local-config";
+    setenv("XDG_CONFIG_HOME", config_home.string().c_str(), 1);
+    setenv("HOME", config_home.string().c_str(), 1);
+    setenv("APPDATA", config_home.string().c_str(), 1);
+    setenv("LOCALAPPDATA", local_data_home.string().c_str(), 1);
+
+    const auto search_paths = defaultAppConfigSearchPaths();
+    REQUIRE_FALSE(search_paths.empty());
+    CHECK(search_paths.front() == std::filesystem::current_path() / "roundtable.toml");
+
+#if defined(_WIN32)
+    CHECK(std::ranges::find(search_paths, config_home / "Roundtable" / "roundtable.toml") != search_paths.end());
+    CHECK(std::ranges::find(search_paths, local_data_home / "Roundtable" / "roundtable.toml") != search_paths.end());
+#elif defined(__APPLE__)
+    CHECK(std::ranges::find(search_paths, config_home / "roundtable.toml") != search_paths.end());
+    CHECK(std::ranges::find(search_paths, config_home / "roundtable" / "roundtable.toml") != search_paths.end());
+    CHECK(std::ranges::find(search_paths, config_home / "Library" / "Application Support" / "Roundtable" / "roundtable.toml") != search_paths.end());
+    CHECK(std::ranges::find(search_paths, config_home / ".config" / "roundtable" / "roundtable.toml") != search_paths.end());
+#else
+    CHECK(std::ranges::find(search_paths, config_home / "roundtable.toml") != search_paths.end());
+    CHECK(std::ranges::find(search_paths, config_home / "roundtable" / "roundtable.toml") != search_paths.end());
+    CHECK(std::ranges::find(search_paths, config_home / ".config" / "roundtable.toml") != search_paths.end());
+    CHECK(std::ranges::find(search_paths, config_home / ".config" / "roundtable" / "roundtable.toml") != search_paths.end());
+#endif
+}
+
 TEST_CASE("initializeUserAppConfig creates XDG user config without overwriting unless forced") {
     CEnvironmentVariableGuard   xdg_guard("XDG_CONFIG_HOME");
     CEnvironmentVariableGuard   home_guard("HOME");
+    CEnvironmentVariableGuard   app_data_guard("APPDATA");
+    CEnvironmentVariableGuard   local_app_data_guard("LOCALAPPDATA");
 
     const std::filesystem::path config_home = std::filesystem::temp_directory_path() / "roundtable-test-xdg-config";
     std::filesystem::remove_all(config_home);
     setenv("XDG_CONFIG_HOME", config_home.string().c_str(), 1);
     unsetenv("HOME");
+    unsetenv("APPDATA");
+    unsetenv("LOCALAPPDATA");
 
+#if defined(_WIN32)
+    setenv("APPDATA", config_home.string().c_str(), 1);
+    const auto expected_path = config_home / "Roundtable" / "roundtable.toml";
+#elif defined(__APPLE__)
+    setenv("HOME", config_home.string().c_str(), 1);
+    const auto expected_path = config_home / "Library" / "Application Support" / "Roundtable" / "roundtable.toml";
+#else
     const auto expected_path = config_home / "roundtable" / "roundtable.toml";
+#endif
     CHECK(defaultUserAppConfigPath() == expected_path);
 
     const auto first_result = initializeUserAppConfig(false);

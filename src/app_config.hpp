@@ -84,6 +84,7 @@ SAppConfig                             loadAppConfig(const std::string& config_p
 SAppConfigLoadResult                   loadAppConfigWithDiagnostics(const std::string& config_path);
 SAppConfigLoadResult                   loadAppConfigWithBaseConfig(const SAppConfig& base_config, const std::string& config_path);
 SAppConfigLoadResult                   loadAppConfigForCliWithDiagnostics(const std::string& config_path, bool config_path_explicit);
+std::vector<std::filesystem::path>     defaultAppConfigSearchPaths();
 std::optional<std::filesystem::path>   findDefaultAppConfigPath();
 std::filesystem::path                  defaultUserAppConfigPath();
 std::string                            defaultAppConfigTemplate();

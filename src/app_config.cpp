@@ -327,6 +327,15 @@ namespace {
         return std::filesystem::is_regular_file(path, error_code);
     }
 
+    std::optional<std::filesystem::path> envPath(const char* name) {
+        const char* value = std::getenv(name);
+        if (value == nullptr || *value == '\0') {
+            return std::nullopt;
+        }
+
+        return std::filesystem::path(value);
+    }
+
     void appendDiagnostics(std::vector<std::string>& destination, const std::vector<std::string>& source) {
         destination.insert(destination.end(), source.begin(), source.end());
     }
@@ -691,20 +700,44 @@ SAppConfig loadAppConfig(const std::string& config_path) {
     return loadAppConfigWithDiagnostics(config_path).config;
 }
 
-std::optional<std::filesystem::path> findDefaultAppConfigPath() {
+std::vector<std::filesystem::path> defaultAppConfigSearchPaths() {
     std::vector<std::filesystem::path> candidate_paths = {
         std::filesystem::current_path() / "roundtable.toml",
     };
 
-    if (const char* xdg_config_home = std::getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr && std::string_view(xdg_config_home).size() > 0) {
-        candidate_paths.emplace_back(std::filesystem::path(xdg_config_home) / "roundtable.toml");
-        candidate_paths.emplace_back(std::filesystem::path(xdg_config_home) / "roundtable" / "roundtable.toml");
+#if defined(_WIN32)
+    if (const auto app_data = envPath("APPDATA"); app_data.has_value()) {
+        candidate_paths.emplace_back(app_data.value() / "Roundtable" / "roundtable.toml");
     }
+    if (const auto local_app_data = envPath("LOCALAPPDATA"); local_app_data.has_value()) {
+        candidate_paths.emplace_back(local_app_data.value() / "Roundtable" / "roundtable.toml");
+    }
+#elif defined(__APPLE__)
+    if (const auto xdg_config_home = envPath("XDG_CONFIG_HOME"); xdg_config_home.has_value()) {
+        candidate_paths.emplace_back(xdg_config_home.value() / "roundtable.toml");
+        candidate_paths.emplace_back(xdg_config_home.value() / "roundtable" / "roundtable.toml");
+    }
+    if (const auto home = envPath("HOME"); home.has_value()) {
+        candidate_paths.emplace_back(home.value() / "Library" / "Application Support" / "Roundtable" / "roundtable.toml");
+        candidate_paths.emplace_back(home.value() / ".config" / "roundtable.toml");
+        candidate_paths.emplace_back(home.value() / ".config" / "roundtable" / "roundtable.toml");
+    }
+#else
+    if (const auto xdg_config_home = envPath("XDG_CONFIG_HOME"); xdg_config_home.has_value()) {
+        candidate_paths.emplace_back(xdg_config_home.value() / "roundtable.toml");
+        candidate_paths.emplace_back(xdg_config_home.value() / "roundtable" / "roundtable.toml");
+    }
+    if (const auto home = envPath("HOME"); home.has_value()) {
+        candidate_paths.emplace_back(home.value() / ".config" / "roundtable.toml");
+        candidate_paths.emplace_back(home.value() / ".config" / "roundtable" / "roundtable.toml");
+    }
+#endif
 
-    if (const char* home = std::getenv("HOME"); home != nullptr && std::string_view(home).size() > 0) {
-        candidate_paths.emplace_back(std::filesystem::path(home) / ".config" / "roundtable.toml");
-        candidate_paths.emplace_back(std::filesystem::path(home) / ".config" / "roundtable" / "roundtable.toml");
-    }
+    return candidate_paths;
+}
+
+std::optional<std::filesystem::path> findDefaultAppConfigPath() {
+    const auto candidate_paths = defaultAppConfigSearchPaths();
 
     for (const auto& candidate_path : candidate_paths) {
         if (pathExists(candidate_path)) {
@@ -716,13 +749,28 @@ std::optional<std::filesystem::path> findDefaultAppConfigPath() {
 }
 
 std::filesystem::path defaultUserAppConfigPath() {
-    if (const char* xdg_config_home = std::getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr && std::string_view(xdg_config_home).size() > 0) {
-        return std::filesystem::path(xdg_config_home) / "roundtable" / "roundtable.toml";
+#if defined(_WIN32)
+    if (const auto app_data = envPath("APPDATA"); app_data.has_value()) {
+        return app_data.value() / "Roundtable" / "roundtable.toml";
     }
-
-    if (const char* home = std::getenv("HOME"); home != nullptr && std::string_view(home).size() > 0) {
-        return std::filesystem::path(home) / ".config" / "roundtable" / "roundtable.toml";
+    if (const auto local_app_data = envPath("LOCALAPPDATA"); local_app_data.has_value()) {
+        return local_app_data.value() / "Roundtable" / "roundtable.toml";
     }
+#elif defined(__APPLE__)
+    if (const auto home = envPath("HOME"); home.has_value()) {
+        return home.value() / "Library" / "Application Support" / "Roundtable" / "roundtable.toml";
+    }
+    if (const auto xdg_config_home = envPath("XDG_CONFIG_HOME"); xdg_config_home.has_value()) {
+        return xdg_config_home.value() / "roundtable" / "roundtable.toml";
+    }
+#else
+    if (const auto xdg_config_home = envPath("XDG_CONFIG_HOME"); xdg_config_home.has_value()) {
+        return xdg_config_home.value() / "roundtable" / "roundtable.toml";
+    }
+    if (const auto home = envPath("HOME"); home.has_value()) {
+        return home.value() / ".config" / "roundtable" / "roundtable.toml";
+    }
+#endif
 
     return std::filesystem::current_path() / "roundtable.toml";
 }
