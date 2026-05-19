@@ -780,15 +780,16 @@ int main(int argc, char** argv) {
     const SCliOptions cli_options = parseCliOptions(argc, argv);
     if (cli_options.show_help) {
         std::cout << "Usage: roundtable [--config path] [program-path]\n";
-        std::cout << "  roundtable                         Start with roundtable.toml / defaults\n";
+        std::cout << "  roundtable                         Start with roundtable.toml, user config, or defaults\n";
         std::cout << "  roundtable --config /tmp/rt.toml   Start with an explicit config file\n";
         std::cout << "  roundtable --profile tests         Use [profiles.tests] from config\n";
         std::cout << "  roundtable ./mybinary              Force dap_launch for the given binary\n";
         return 0;
     }
 
-    const std::string config_path = cli_options.config_path.string();
-    SAppConfig        app_config  = loadAppConfig(config_path);
+    const std::string config_path        = cli_options.config_path.string();
+    const auto        config_load_result = loadAppConfigForCliWithDiagnostics(config_path, cli_options.config_path_explicit);
+    SAppConfig        app_config         = config_load_result.config;
     applyCliOverrides(cli_options, app_config);
     const auto                     buildActiveTheme             = [&](eThemePreset preset) { return applyThemeOverrides(buildTheme(preset), app_config.theme_overrides); };
     eThemePreset                   active_theme_preset          = app_config.theme_preset;
@@ -1107,9 +1108,9 @@ int main(int argc, char** argv) {
             return;
         }
 
-        const SAppConfig previous_config    = app_config;
-        const auto       config_load_result = loadAppConfigWithDiagnostics(config_path);
-        SAppConfig       reloaded_config    = config_load_result.config;
+        const SAppConfig previous_config      = app_config;
+        const auto       reload_config_result = loadAppConfigForCliWithDiagnostics(config_path, cli_options.config_path_explicit);
+        SAppConfig       reloaded_config      = reload_config_result.config;
         applyCliOverrides(cli_options, reloaded_config);
 
         app_config  = std::move(reloaded_config);
@@ -1152,10 +1153,10 @@ int main(int argc, char** argv) {
             applyBootstrapResult(bootstrapSession(app_config), "Config reloaded");
         }
 
-        if (!config_load_result.diagnostics.empty()) {
-            transient_status_message = "Config reload warning: " + config_load_result.diagnostics.front();
-            if (config_load_result.diagnostics.size() > 1) {
-                transient_status_message += " (+" + std::to_string(config_load_result.diagnostics.size() - 1) + " more)";
+        if (!reload_config_result.diagnostics.empty()) {
+            transient_status_message = "Config reload warning: " + reload_config_result.diagnostics.front();
+            if (reload_config_result.diagnostics.size() > 1) {
+                transient_status_message += " (+" + std::to_string(reload_config_result.diagnostics.size() - 1) + " more)";
             }
         }
 

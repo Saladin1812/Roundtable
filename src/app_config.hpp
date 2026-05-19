@@ -75,5 +75,8 @@ struct SAppConfigLoadResult {
 
 SAppConfig                             loadAppConfig(const std::string& config_path);
 SAppConfigLoadResult                   loadAppConfigWithDiagnostics(const std::string& config_path);
+SAppConfigLoadResult                   loadAppConfigWithBaseConfig(const SAppConfig& base_config, const std::string& config_path);
+SAppConfigLoadResult                   loadAppConfigForCliWithDiagnostics(const std::string& config_path, bool config_path_explicit);
+std::optional<std::filesystem::path>   findDefaultAppConfigPath();
 bool                                   applyLaunchProfile(SAppConfig& config, const std::string& profile_name);
 std::optional<SSourceBreakpointConfig> parseSourceBreakpointConfig(std::string value);

@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstdlib>
 #include <fstream>
 #include <optional>
 #include <ranges>
+#include <system_error>
 #include <string>
 #include <string_view>
 
@@ -305,6 +307,30 @@ namespace {
         return "line " + std::to_string(line_number) + ": " + message;
     }
 
+    bool samePath(const std::filesystem::path& left, const std::filesystem::path& right) {
+        std::error_code error_code;
+        const auto      left_canonical = std::filesystem::weakly_canonical(std::filesystem::absolute(left, error_code), error_code);
+        if (error_code) {
+            return false;
+        }
+
+        const auto right_canonical = std::filesystem::weakly_canonical(std::filesystem::absolute(right, error_code), error_code);
+        if (error_code) {
+            return false;
+        }
+
+        return left_canonical == right_canonical;
+    }
+
+    bool pathExists(const std::filesystem::path& path) {
+        std::error_code error_code;
+        return std::filesystem::is_regular_file(path, error_code);
+    }
+
+    void appendDiagnostics(std::vector<std::string>& destination, const std::vector<std::string>& source) {
+        destination.insert(destination.end(), source.begin(), source.end());
+    }
+
 } // namespace
 
 std::optional<SSourceBreakpointConfig> parseSourceBreakpointConfig(std::string value) {
@@ -339,10 +365,13 @@ std::optional<SSourceBreakpointConfig> parseSourceBreakpointConfig(std::string v
     };
 }
 
-SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path) {
-    SAppConfigLoadResult result = {};
-    SAppConfig&          config = result.config;
-    std::ifstream        config_stream(config_path);
+SAppConfigLoadResult loadAppConfigWithBaseConfig(const SAppConfig& base_config, const std::string& config_path) {
+    SAppConfigLoadResult result = {
+        .config      = base_config,
+        .diagnostics = {},
+    };
+    SAppConfig&   config = result.config;
+    std::ifstream config_stream(config_path);
     if (!config_stream.is_open()) {
         result.diagnostics.push_back("config file not found: " + config_path);
         return result;
@@ -447,6 +476,7 @@ SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path
                     result.diagnostics.push_back(lineDiagnostic(value_line_number, "unknown session mode: " + unquoted_value));
                 }
                 config.session_mode = parsed_value;
+                config.active_profile.clear();
             } else if (key == "startup_focus") {
                 const auto unquoted_value = unquote(value);
                 const auto parsed_value   = parseFocusPane(unquoted_value, config.startup_focus);
@@ -653,8 +683,59 @@ SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path
     return result;
 }
 
+SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path) {
+    return loadAppConfigWithBaseConfig(SAppConfig{}, config_path);
+}
+
 SAppConfig loadAppConfig(const std::string& config_path) {
     return loadAppConfigWithDiagnostics(config_path).config;
+}
+
+std::optional<std::filesystem::path> findDefaultAppConfigPath() {
+    std::vector<std::filesystem::path> candidate_paths = {
+        std::filesystem::current_path() / "roundtable.toml",
+    };
+
+    if (const char* xdg_config_home = std::getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr && std::string_view(xdg_config_home).size() > 0) {
+        candidate_paths.emplace_back(std::filesystem::path(xdg_config_home) / "roundtable.toml");
+        candidate_paths.emplace_back(std::filesystem::path(xdg_config_home) / "roundtable" / "roundtable.toml");
+    }
+
+    if (const char* home = std::getenv("HOME"); home != nullptr && std::string_view(home).size() > 0) {
+        candidate_paths.emplace_back(std::filesystem::path(home) / ".config" / "roundtable.toml");
+        candidate_paths.emplace_back(std::filesystem::path(home) / ".config" / "roundtable" / "roundtable.toml");
+    }
+
+    for (const auto& candidate_path : candidate_paths) {
+        if (pathExists(candidate_path)) {
+            return candidate_path;
+        }
+    }
+
+    return std::nullopt;
+}
+
+SAppConfigLoadResult loadAppConfigForCliWithDiagnostics(const std::string& config_path, bool config_path_explicit) {
+    const std::filesystem::path requested_path   = config_path;
+    const auto                  default_path     = findDefaultAppConfigPath();
+    const bool                  requested_exists = pathExists(requested_path);
+
+    if (!config_path_explicit && !requested_exists && default_path.has_value()) {
+        return loadAppConfigWithDiagnostics(default_path->string());
+    }
+
+    SAppConfigLoadResult result      = {};
+    SAppConfig           base_config = {};
+    if (default_path.has_value() && !samePath(default_path.value(), requested_path)) {
+        auto base_result = loadAppConfigWithDiagnostics(default_path->string());
+        base_config      = std::move(base_result.config);
+        appendDiagnostics(result.diagnostics, base_result.diagnostics);
+    }
+
+    auto overlay_result = loadAppConfigWithBaseConfig(base_config, config_path);
+    appendDiagnostics(result.diagnostics, overlay_result.diagnostics);
+    result.config = std::move(overlay_result.config);
+    return result;
 }
 
 bool applyLaunchProfile(SAppConfig& config, const std::string& profile_name) {

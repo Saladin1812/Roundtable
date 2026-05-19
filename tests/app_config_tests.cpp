@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <optional>
 
 #include "app_config.hpp"
 
@@ -232,6 +233,58 @@ TEST_CASE("loadAppConfig applies selected launch profile as an overlay") {
     CHECK(result.config.breakpoints[0].line == 17);
 
     std::filesystem::remove(config_path);
+}
+
+TEST_CASE("loadAppConfigWithBaseConfig preserves user UI config while overlaying launch config") {
+    SAppConfig base_config                 = {};
+    base_config.theme_preset               = eThemePreset::FOREST;
+    base_config.show_disassembly_view      = true;
+    base_config.theme_overrides.memory_hex = ftxui::Color::RGB(0x12, 0x34, 0x56);
+    base_config.active_profile             = "base";
+    base_config.launch_profiles            = {{
+                   .name              = "base",
+                   .command           = std::nullopt,
+                   .liblldb_path      = std::nullopt,
+                   .program           = std::string{"/tmp/base"},
+                   .arguments         = std::nullopt,
+                   .working_directory = std::nullopt,
+                   .stop_on_entry     = std::nullopt,
+                   .continue_once     = std::nullopt,
+                   .watches           = std::nullopt,
+                   .breakpoints       = std::nullopt,
+    }};
+
+    const std::filesystem::path overlay_path = std::filesystem::temp_directory_path() / "roundtable-test-overlay-config.toml";
+    {
+        std::ofstream config_stream(overlay_path);
+        config_stream << "[session]\n";
+        config_stream << "mode = \"dap_launch\"\n";
+        config_stream << "\n";
+        config_stream << "[dap_launch]\n";
+        config_stream << "program = \"/tmp/from-nvim\"\n";
+        config_stream << "arguments = [\"--from-plugin\"]\n";
+        config_stream << "working_directory = \"/tmp/project\"\n";
+        config_stream << "\n";
+        config_stream << "[watches]\n";
+        config_stream << "entries = [\"argc\"]\n";
+    }
+
+    const SAppConfigLoadResult result = loadAppConfigWithBaseConfig(base_config, overlay_path.string());
+
+    CHECK(result.diagnostics.empty());
+    CHECK(result.config.theme_preset == eThemePreset::FOREST);
+    CHECK(result.config.show_disassembly_view);
+    REQUIRE(result.config.theme_overrides.memory_hex.has_value());
+    CHECK(result.config.theme_overrides.memory_hex.value() == ftxui::Color::RGB(0x12, 0x34, 0x56));
+    CHECK(result.config.session_mode == eSessionMode::DAP_LAUNCH);
+    CHECK(result.config.active_profile.empty());
+    CHECK(result.config.dap_launch.program == "/tmp/from-nvim");
+    REQUIRE(result.config.dap_launch.arguments.size() == 1);
+    CHECK(result.config.dap_launch.arguments[0] == "--from-plugin");
+    REQUIRE(result.config.watches.size() == 1);
+    CHECK(result.config.watches[0] == "argc");
+
+    std::filesystem::remove(overlay_path);
 }
 
 TEST_CASE("loadAppConfig reads codelldb auto-detect configuration from TOML") {

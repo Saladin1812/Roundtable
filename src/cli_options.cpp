@@ -15,14 +15,16 @@ SCliOptions parseCliOptions(int argc, char** argv) {
         if (argument == "--config" || argument == "-c") {
             if (argument_index + 1 < argc) {
                 ++argument_index;
-                options.config_path = std::filesystem::path(argv[argument_index]);
+                options.config_path          = std::filesystem::path(argv[argument_index]);
+                options.config_path_explicit = true;
             }
             continue;
         }
 
         constexpr std::string_view config_prefix = "--config=";
         if (argument.starts_with(config_prefix)) {
-            options.config_path = std::filesystem::path(argument.substr(config_prefix.size()));
+            options.config_path          = std::filesystem::path(argument.substr(config_prefix.size()));
+            options.config_path_explicit = true;
             continue;
         }
 
