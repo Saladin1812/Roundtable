@@ -7,6 +7,7 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -234,6 +235,60 @@ namespace {
         return value.size() >= 2 && value.front() == '[' && value.back() == ']';
     }
 
+    bool isLaunchProfileSection(const std::string& section) {
+        constexpr std::string_view prefix = "profiles.";
+        return section.starts_with(prefix) && section.size() > prefix.size();
+    }
+
+    std::string launchProfileNameFromSection(const std::string& section) {
+        constexpr std::string_view prefix = "profiles.";
+        return section.substr(prefix.size());
+    }
+
+    SLaunchProfileConfig& findOrAddLaunchProfile(SAppConfig& config, const std::string& name) {
+        const auto profile_iterator = std::ranges::find_if(config.launch_profiles, [&](const SLaunchProfileConfig& profile) { return profile.name == name; });
+        if (profile_iterator != config.launch_profiles.end()) {
+            return *profile_iterator;
+        }
+
+        config.launch_profiles.push_back({
+            .name              = name,
+            .command           = std::nullopt,
+            .liblldb_path      = std::nullopt,
+            .program           = std::nullopt,
+            .arguments         = std::nullopt,
+            .working_directory = std::nullopt,
+            .stop_on_entry     = std::nullopt,
+            .continue_once     = std::nullopt,
+        });
+        return config.launch_profiles.back();
+    }
+
+    void applyLaunchProfileConfig(SAppConfig& config, const SLaunchProfileConfig& profile) {
+        config.session_mode = eSessionMode::DAP_LAUNCH;
+        if (profile.command.has_value()) {
+            config.dap_launch.command = profile.command.value();
+        }
+        if (profile.liblldb_path.has_value()) {
+            config.dap_launch.liblldb_path = profile.liblldb_path.value();
+        }
+        if (profile.program.has_value()) {
+            config.dap_launch.program = profile.program.value();
+        }
+        if (profile.arguments.has_value()) {
+            config.dap_launch.arguments = profile.arguments.value();
+        }
+        if (profile.working_directory.has_value()) {
+            config.dap_launch.working_directory = profile.working_directory.value();
+        }
+        if (profile.stop_on_entry.has_value()) {
+            config.dap_launch.stop_on_entry = profile.stop_on_entry.value();
+        }
+        if (profile.continue_once.has_value()) {
+            config.dap_launch.continue_once = profile.continue_once.value();
+        }
+    }
+
     std::string lineDiagnostic(std::size_t line_number, const std::string& message) {
         return "line " + std::to_string(line_number) + ": " + message;
     }
@@ -299,7 +354,7 @@ SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path
 
             current_section = trim(line.substr(1, line.size() - 2));
             if (current_section != "views" && current_section != "theme" && current_section != "session" && current_section != "dap_launch" && current_section != "breakpoints" &&
-                current_section != "watches" && current_section != "codelldb.auto_detect" && current_section != "keybindings") {
+                current_section != "watches" && current_section != "codelldb.auto_detect" && current_section != "keybindings" && !isLaunchProfileSection(current_section)) {
                 result.diagnostics.push_back(lineDiagnostic(line_number, "unknown section [" + current_section + "]"));
             }
             continue;
@@ -388,6 +443,8 @@ SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path
                     result.diagnostics.push_back(lineDiagnostic(value_line_number, "unknown startup_focus: " + unquoted_value));
                 }
                 config.startup_focus = parsed_value;
+            } else if (key == "profile") {
+                config.active_profile = unquote(value);
             } else {
                 result.diagnostics.push_back(lineDiagnostic(value_line_number, "unknown session key: " + key));
             }
@@ -424,6 +481,41 @@ SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path
                 }
             } else {
                 result.diagnostics.push_back(lineDiagnostic(value_line_number, "unknown dap_launch key: " + key));
+            }
+            continue;
+        }
+
+        if (isLaunchProfileSection(current_section)) {
+            auto& profile = findOrAddLaunchProfile(config, launchProfileNameFromSection(current_section));
+            if (key == "command") {
+                profile.command = unquote(value);
+            } else if (key == "liblldb_path") {
+                profile.liblldb_path = unquote(value);
+            } else if (key == "program") {
+                profile.program = unquote(value);
+            } else if (key == "arguments") {
+                if (!isStringArraySyntax(value)) {
+                    result.diagnostics.push_back(lineDiagnostic(value_line_number, "invalid string array for " + current_section + ".arguments"));
+                }
+                profile.arguments = parseStringArray(value);
+            } else if (key == "working_directory") {
+                profile.working_directory = unquote(value);
+            } else if (key == "stop_on_entry") {
+                const auto parsed_value = parseBoolValue(value);
+                if (parsed_value.has_value()) {
+                    profile.stop_on_entry = parsed_value;
+                } else {
+                    result.diagnostics.push_back(lineDiagnostic(value_line_number, "invalid boolean for " + current_section + ".stop_on_entry"));
+                }
+            } else if (key == "continue_once") {
+                const auto parsed_value = parseBoolValue(value);
+                if (parsed_value.has_value()) {
+                    profile.continue_once = parsed_value;
+                } else {
+                    result.diagnostics.push_back(lineDiagnostic(value_line_number, "invalid boolean for " + current_section + ".continue_once"));
+                }
+            } else {
+                result.diagnostics.push_back(lineDiagnostic(value_line_number, "unknown launch profile key: " + key));
             }
             continue;
         }
@@ -510,7 +602,20 @@ SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path
             continue;
         }
 
-        result.diagnostics.push_back(lineDiagnostic(value_line_number, "ignored key in unknown section [" + current_section + "]: " + key));
+        std::string diagnostic_message = "ignored key in unknown section [";
+        diagnostic_message += current_section;
+        diagnostic_message += "]: ";
+        diagnostic_message += key;
+        result.diagnostics.push_back(lineDiagnostic(value_line_number, diagnostic_message));
+    }
+
+    if (!config.active_profile.empty()) {
+        const auto profile_iterator = std::ranges::find_if(config.launch_profiles, [&](const SLaunchProfileConfig& profile) { return profile.name == config.active_profile; });
+        if (profile_iterator != config.launch_profiles.end()) {
+            applyLaunchProfileConfig(config, *profile_iterator);
+        } else {
+            result.diagnostics.push_back("unknown launch profile: " + config.active_profile);
+        }
     }
 
     return result;
@@ -518,4 +623,15 @@ SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path
 
 SAppConfig loadAppConfig(const std::string& config_path) {
     return loadAppConfigWithDiagnostics(config_path).config;
+}
+
+bool applyLaunchProfile(SAppConfig& config, const std::string& profile_name) {
+    const auto profile_iterator = std::ranges::find_if(config.launch_profiles, [&](const SLaunchProfileConfig& profile) { return profile.name == profile_name; });
+    if (profile_iterator == config.launch_profiles.end()) {
+        return false;
+    }
+
+    config.active_profile = profile_name;
+    applyLaunchProfileConfig(config, *profile_iterator);
+    return true;
 }

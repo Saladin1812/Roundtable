@@ -8,6 +8,7 @@
 struct SCliOptions {
     bool                                 show_help   = false;
     std::filesystem::path                config_path = "roundtable.toml";
+    std::optional<std::string>           profile;
     std::optional<std::filesystem::path> launch_program;
 };
 

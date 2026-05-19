@@ -26,6 +26,20 @@ SCliOptions parseCliOptions(int argc, char** argv) {
             continue;
         }
 
+        if (argument == "--profile" || argument == "-p") {
+            if (argument_index + 1 < argc) {
+                ++argument_index;
+                options.profile = argv[argument_index];
+            }
+            continue;
+        }
+
+        constexpr std::string_view profile_prefix = "--profile=";
+        if (argument.starts_with(profile_prefix)) {
+            options.profile = argument.substr(profile_prefix.size());
+            continue;
+        }
+
         if (!options.launch_program.has_value()) {
             options.launch_program = std::filesystem::path(argument);
         }
@@ -35,6 +49,11 @@ SCliOptions parseCliOptions(int argc, char** argv) {
 }
 
 void applyCliOverrides(const SCliOptions& cli_options, SAppConfig& app_config) {
+    if (cli_options.profile.has_value()) {
+        app_config.active_profile = cli_options.profile.value();
+        applyLaunchProfile(app_config, cli_options.profile.value());
+    }
+
     if (!cli_options.launch_program.has_value()) {
         return;
     }

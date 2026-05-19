@@ -1,6 +1,7 @@
 [session]
 mode = "mock"
 startup_focus = "memory"
+# profile = "sample"
 
 [views]
 show_memory = true
@@ -39,6 +40,20 @@ preset = "default"
 command = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/adapter/codelldb"
 liblldb_path = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/lldb/lib/liblldb.so"
 program = "./build/roundtable_dap_sample"
+arguments = []
+working_directory = "."
+stop_on_entry = true
+continue_once = false
+
+[profiles.sample]
+program = "./build/roundtable_dap_sample"
+arguments = []
+working_directory = "."
+stop_on_entry = true
+continue_once = false
+
+[profiles.tests]
+program = "./build/roundtable_tests"
 arguments = []
 working_directory = "."
 stop_on_entry = true

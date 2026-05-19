@@ -736,6 +736,7 @@ int main(int argc, char** argv) {
         std::cout << "Usage: roundtable [--config path] [program-path]\n";
         std::cout << "  roundtable                         Start with roundtable.toml / defaults\n";
         std::cout << "  roundtable --config /tmp/rt.toml   Start with an explicit config file\n";
+        std::cout << "  roundtable --profile tests         Use [profiles.tests] from config\n";
         std::cout << "  roundtable ./mybinary              Force dap_launch for the given binary\n";
         return 0;
     }

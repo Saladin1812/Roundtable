@@ -51,6 +51,12 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "stop_on_entry = false\n";
         config_stream << "continue_once = true\n";
         config_stream << "\n";
+        config_stream << "[profiles.tests]\n";
+        config_stream << "program = \"/tmp/sample-tests\"\n";
+        config_stream << "arguments = [\"--suite\", \"unit\"]\n";
+        config_stream << "working_directory = \"/tmp/tests\"\n";
+        config_stream << "continue_once = false\n";
+        config_stream << "\n";
         config_stream << "[breakpoints]\n";
         config_stream << "entries = [\n";
         config_stream << "  \"src/main.cpp:42\",\n";
@@ -102,6 +108,13 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     CHECK(config.dap_launch.working_directory == "/tmp");
     CHECK_FALSE(config.dap_launch.stop_on_entry);
     CHECK(config.dap_launch.continue_once);
+    REQUIRE(config.launch_profiles.size() == 1);
+    CHECK(config.launch_profiles[0].name == "tests");
+    REQUIRE(config.launch_profiles[0].program.has_value());
+    CHECK(config.launch_profiles[0].program.value() == "/tmp/sample-tests");
+    REQUIRE(config.launch_profiles[0].arguments.has_value());
+    CHECK(config.launch_profiles[0].arguments.value()[0] == "--suite");
+    CHECK(config.launch_profiles[0].arguments.value()[1] == "unit");
     REQUIRE(config.breakpoints.size() == 2);
     CHECK(config.breakpoints[0].source_path == std::filesystem::path("src/main.cpp"));
     CHECK(config.breakpoints[0].line == 42);
@@ -142,6 +155,47 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     const auto theme_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::CYCLE_THEME; });
     REQUIRE(theme_keybinding != config.keybindings.end());
     CHECK(theme_keybinding->keys == "Space C");
+
+    std::filesystem::remove(config_path);
+}
+
+TEST_CASE("loadAppConfig applies selected launch profile as an overlay") {
+    const std::filesystem::path config_path = std::filesystem::temp_directory_path() / "roundtable-test-profile-config.toml";
+
+    {
+        std::ofstream config_stream(config_path);
+        config_stream << "[session]\n";
+        config_stream << "profile = \"tests\"\n";
+        config_stream << "\n";
+        config_stream << "[dap_launch]\n";
+        config_stream << "command = \"/tmp/codelldb\"\n";
+        config_stream << "liblldb_path = \"/tmp/liblldb.so\"\n";
+        config_stream << "program = \"/tmp/app\"\n";
+        config_stream << "arguments = []\n";
+        config_stream << "working_directory = \"/tmp/app-dir\"\n";
+        config_stream << "stop_on_entry = true\n";
+        config_stream << "continue_once = true\n";
+        config_stream << "\n";
+        config_stream << "[profiles.tests]\n";
+        config_stream << "program = \"/tmp/tests\"\n";
+        config_stream << "arguments = [\"--unit\"]\n";
+        config_stream << "working_directory = \"/tmp/test-dir\"\n";
+        config_stream << "continue_once = false\n";
+    }
+
+    const SAppConfigLoadResult result = loadAppConfigWithDiagnostics(config_path.string());
+
+    CHECK(result.diagnostics.empty());
+    CHECK(result.config.session_mode == eSessionMode::DAP_LAUNCH);
+    CHECK(result.config.active_profile == "tests");
+    CHECK(result.config.dap_launch.command == "/tmp/codelldb");
+    CHECK(result.config.dap_launch.liblldb_path == "/tmp/liblldb.so");
+    CHECK(result.config.dap_launch.program == "/tmp/tests");
+    REQUIRE(result.config.dap_launch.arguments.size() == 1);
+    CHECK(result.config.dap_launch.arguments[0] == "--unit");
+    CHECK(result.config.dap_launch.working_directory == "/tmp/test-dir");
+    CHECK(result.config.dap_launch.stop_on_entry);
+    CHECK_FALSE(result.config.dap_launch.continue_once);
 
     std::filesystem::remove(config_path);
 }
@@ -187,6 +241,10 @@ TEST_CASE("loadAppConfigWithDiagnostics reports malformed config entries") {
         config_stream << "[keybindings]\n";
         config_stream << "not_a_command = \"Space Z\"\n";
         config_stream << "\n";
+        config_stream << "[profiles.bad]\n";
+        config_stream << "continue_once = maybe\n";
+        config_stream << "unknown = true\n";
+        config_stream << "\n";
         config_stream << "[unknown]\n";
         config_stream << "value = true\n";
         config_stream << "not valid\n";
@@ -204,6 +262,8 @@ TEST_CASE("loadAppConfigWithDiagnostics reports malformed config entries") {
     CHECK(has_diagnostic("invalid or unknown theme color"));
     CHECK(has_diagnostic("invalid breakpoint entry"));
     CHECK(has_diagnostic("unknown keybinding command"));
+    CHECK(has_diagnostic("invalid boolean for profiles.bad.continue_once"));
+    CHECK(has_diagnostic("unknown launch profile key"));
     CHECK(has_diagnostic("unknown section [unknown]"));
     CHECK(has_diagnostic("expected key = value"));
 
