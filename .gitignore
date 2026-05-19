@@ -43,9 +43,11 @@ _deps/
 .cache/
 .codex
 .local-notes/
+roundtable.nvim/
 .idea/
 .vscode/
 *.swp
 *.swo
+nvim.log
 *~
 .DS_Store
