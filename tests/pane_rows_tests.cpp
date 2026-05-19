@@ -49,7 +49,7 @@ TEST_CASE("formatWatchListPaneRows formats watch results and errors") {
 
     REQUIRE(rows.size() == 2);
     CHECK(rows[0] == "a = 42 : int");
-    CHECK(rows[1] == "missing_value : Expression could not be evaluated");
+    CHECK(rows[1] == "missing_value ! Expression could not be evaluated");
 }
 
 TEST_CASE("formatDisassemblyPaneRows formats disassembly instructions") {

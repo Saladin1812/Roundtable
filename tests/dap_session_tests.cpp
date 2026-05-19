@@ -1080,6 +1080,37 @@ TEST_CASE("CDapDebugSession evaluates watch expressions through stackTrace and e
     CHECK(watch_results[1].error_message.empty());
 }
 
+TEST_CASE("CDapDebugSession annotates failed watch expressions with selected frame context") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":1001,"name":"helper","line":9,"column":1,"source":{"path":"/tmp/sample.cpp"}},{"id":1008,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}}]}})",
+        R"({"type":"response","command":"evaluate","success":false,"message":"error: use of undeclared identifier 'sample_value'"})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+    dap_session.setAdapterCapabilities({
+        .supports_read_memory      = false,
+        .supports_write_memory     = false,
+        .supports_evaluate         = true,
+        .supports_disassemble      = false,
+        .supports_data_breakpoints = false,
+    });
+
+    REQUIRE(dap_session.connect());
+    const auto watch_results = dap_session.evaluateWatches(
+        {
+            .thread_id   = 19,
+            .frame_index = 1,
+        },
+        {
+            {.expression = "sample_value"},
+        });
+
+    REQUIRE(watch_results.size() == 1);
+    CHECK(watch_results[0].expression == "sample_value");
+    CHECK(watch_results[0].error_message == "not available in frame #1 T:19: error: use of undeclared identifier 'sample_value'");
+}
+
 TEST_CASE("CDapDebugSession resolves locals from the selected nonzero frame index") {
     auto transport = std::make_unique<CStubDapTransport>(true);
     transport->setReadMessages({

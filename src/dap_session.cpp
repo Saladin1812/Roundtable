@@ -2342,7 +2342,9 @@ std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelectio
             .value            = evaluate_response.result,
             .type             = evaluate_response.type,
             .memory_reference = evaluate_response.memory_reference,
-            .error_message    = evaluate_response.success ? "" : evaluate_response.error_message,
+            .error_message    = evaluate_response.success ?
+                   "" :
+                   "not available in frame #" + std::to_string(selection.frame_index) + " T:" + std::to_string(selection.thread_id) + ": " + evaluate_response.error_message,
         });
     }
 

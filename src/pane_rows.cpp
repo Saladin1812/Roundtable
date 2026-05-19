@@ -19,7 +19,7 @@ std::vector<std::string> formatWatchListPaneRows(const std::vector<SWatchResult>
 
     for (const auto& watch_result : watch_results) {
         if (!watch_result.error_message.empty()) {
-            rows.push_back(watch_result.expression + " : " + watch_result.error_message);
+            rows.push_back(watch_result.expression + " ! " + watch_result.error_message);
             continue;
         }
 
