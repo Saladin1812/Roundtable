@@ -62,6 +62,8 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "\n";
         config_stream << "[keybindings]\n";
         config_stream << "focus_memory = \"Space x\"\n";
+        config_stream << "focus_breakpoints = \"Space P\"\n";
+        config_stream << "remove_breakpoint = \"Space D\"\n";
         config_stream << "toggle_shortcuts_help = \"Space h\"\n";
         config_stream << "cycle_theme = \"Space C\"\n";
     }
@@ -110,6 +112,15 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     const auto memory_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_MEMORY; });
     REQUIRE(memory_keybinding != config.keybindings.end());
     CHECK(memory_keybinding->keys == "Space x");
+
+    const auto breakpoints_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::FOCUS_BREAKPOINTS; });
+    REQUIRE(breakpoints_keybinding != config.keybindings.end());
+    CHECK(breakpoints_keybinding->keys == "Space P");
+
+    const auto remove_breakpoint_keybinding =
+        std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::REMOVE_BREAKPOINT; });
+    REQUIRE(remove_breakpoint_keybinding != config.keybindings.end());
+    CHECK(remove_breakpoint_keybinding->keys == "Space D");
 
     const auto help_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_SHORTCUTS_HELP; });
     REQUIRE(help_keybinding != config.keybindings.end());

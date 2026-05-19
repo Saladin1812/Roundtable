@@ -47,6 +47,11 @@ namespace {
         REMOVE,
     };
 
+    enum class eBreakpointActionMode : std::uint8_t {
+        NONE,
+        REMOVE,
+    };
+
     struct SPromptState {
         ePromptMode mode = ePromptMode::NONE;
         std::string input;
@@ -168,6 +173,18 @@ namespace {
         return rows;
     }
 
+    std::vector<std::string> formatBreakpointPaneRows(const std::vector<SSourceBreakpointConfig>& breakpoints) {
+        std::vector<std::string> rows;
+        rows.reserve(breakpoints.size());
+
+        for (std::size_t index = 0; index < breakpoints.size(); ++index) {
+            const auto& breakpoint = breakpoints[index];
+            rows.push_back("#" + std::to_string(index) + " :" + std::to_string(breakpoint.line) + " " + compactPathForStatus(breakpoint.source_path.string()));
+        }
+
+        return rows;
+    }
+
     struct SLeaderHintRow {
         std::string keys;
         std::string description;
@@ -188,6 +205,11 @@ namespace {
                 }
                 if (command == eCommand::SET_MEMORY_TARGET) {
                     return 1;
+                }
+                break;
+            case eFocusPane::BREAKPOINTS:
+                if (command == eCommand::ADD_BREAKPOINT || command == eCommand::REMOVE_BREAKPOINT) {
+                    return 0;
                 }
                 break;
             case eFocusPane::LOCALS:
@@ -702,6 +724,7 @@ int main(int argc, char** argv) {
                       .selected_index  = themePresetIndex(active_theme_preset),
     };
     eWatchActionMode      watch_action_mode       = eWatchActionMode::NONE;
+    eBreakpointActionMode breakpoint_action_mode  = eBreakpointActionMode::NONE;
     SAsyncDapControlState async_dap_control_state = {};
 
     SSelectablePaneState  locals_pane = {
@@ -724,6 +747,10 @@ int main(int argc, char** argv) {
         .title = " Watch List ",
         .rows  = {},
     };
+    SSelectablePaneState breakpoints_pane = {
+        .title = " Breakpoints ",
+        .rows  = {},
+    };
     std::string          memory_target_label = {};
     SMemoryRenderContext memory_context      = {};
 
@@ -735,11 +762,13 @@ int main(int argc, char** argv) {
         memory_view_pane.rows           = {"Session terminated"};
         disassembly_pane.rows           = {"Session terminated"};
         watch_list_pane.rows            = {"Session terminated"};
+        breakpoints_pane.rows           = {"Session terminated"};
         locals_pane.selected_index      = 0;
         stack_pane.selected_index       = 0;
         memory_view_pane.selected_index = 0;
         disassembly_pane.selected_index = 0;
         watch_list_pane.selected_index  = 0;
+        breakpoints_pane.selected_index = 0;
         memory_target_label             = {};
         memory_context                  = {};
         stopped_context                 = {};
@@ -756,9 +785,12 @@ int main(int argc, char** argv) {
             return;
         }
 
-        stack_pane.title          = " Stack [T:" + std::to_string(debug_selection.thread_id) + "] ";
-        stack_pane.rows           = formatStackPaneRows(stopped_context.stack_frames);
-        stack_pane.selected_index = std::min(debug_selection.frame_index, stack_pane.rows.empty() ? 0UL : stack_pane.rows.size() - 1);
+        stack_pane.title                = " Stack [T:" + std::to_string(debug_selection.thread_id) + "] ";
+        stack_pane.rows                 = formatStackPaneRows(stopped_context.stack_frames);
+        stack_pane.selected_index       = std::min(debug_selection.frame_index, stack_pane.rows.empty() ? 0UL : stack_pane.rows.size() - 1);
+        breakpoints_pane.title          = " Breakpoints [" + std::to_string(app_config.breakpoints.size()) + "] ";
+        breakpoints_pane.rows           = formatBreakpointPaneRows(app_config.breakpoints);
+        breakpoints_pane.selected_index = std::min(breakpoints_pane.selected_index, breakpoints_pane.rows.empty() ? 0UL : breakpoints_pane.rows.size() - 1);
 
         SPaneRefreshInputs inputs = {
             .debug_session                = *debug_session,
@@ -1124,10 +1156,15 @@ int main(int argc, char** argv) {
         Element           locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
         Element           stack           = renderSelectablePane(stack_pane, focused_pane == eFocusPane::STACK, app_theme);
         Element           watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
+        Element           breakpoints     = renderSelectablePane(breakpoints_pane, focused_pane == eFocusPane::BREAKPOINTS, app_theme);
         Element           auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme, memory_context);
         Element           left_column     = vbox({
             locals | flex,
             stack | size(HEIGHT, EQUAL, 8),
+        });
+        Element           right_column    = vbox({
+            watch_list | flex,
+            breakpoints | size(HEIGHT, EQUAL, 8),
         });
 
         Elements          runtime_status_items = {
@@ -1154,7 +1191,7 @@ int main(int argc, char** argv) {
             hbox({
                 left_column | size(WIDTH, EQUAL, 28),
                 auxiliary_views | flex,
-                watch_list | size(WIDTH, EQUAL, 28),
+                right_column | size(WIDTH, EQUAL, 28),
             }) | flex,
             status_bar,
         });
@@ -1218,6 +1255,8 @@ int main(int argc, char** argv) {
                     const auto breakpoint = parseSourceBreakpointConfig(prompt_state.input);
                     if (breakpoint.has_value()) {
                         app_config.breakpoints.push_back(breakpoint.value());
+                        breakpoints_pane.selected_index = app_config.breakpoints.empty() ? 0UL : app_config.breakpoints.size() - 1;
+                        focused_pane                    = eFocusPane::BREAKPOINTS;
                         applyBreakpointsToActiveSession();
                     } else {
                         transient_status_message = "Invalid breakpoint, expected source.cpp:line";
@@ -1370,6 +1409,35 @@ int main(int argc, char** argv) {
             return true;
         }
 
+        if (breakpoint_action_mode != eBreakpointActionMode::NONE && focused_pane == eFocusPane::BREAKPOINTS) {
+            if (event == Event::Escape) {
+                breakpoint_action_mode   = eBreakpointActionMode::NONE;
+                transient_status_message = {};
+                return true;
+            }
+
+            if (event == Event::Return) {
+                if (breakpoint_action_mode == eBreakpointActionMode::REMOVE && breakpoints_pane.selected_index < app_config.breakpoints.size()) {
+                    app_config.breakpoints.erase(app_config.breakpoints.begin() + static_cast<std::ptrdiff_t>(breakpoints_pane.selected_index));
+                    if (breakpoints_pane.selected_index > 0 && breakpoints_pane.selected_index >= app_config.breakpoints.size()) {
+                        --breakpoints_pane.selected_index;
+                    }
+                    applyBreakpointsToActiveSession();
+                    refreshAllPanes();
+                }
+
+                breakpoint_action_mode   = eBreakpointActionMode::NONE;
+                transient_status_message = {};
+                return true;
+            }
+
+            const bool handled = handleVerticalNavigation(event, breakpoints_pane);
+            if (handled) {
+                refreshAllPanes();
+            }
+            return true;
+        }
+
         if (event == Event::Character('q')) {
             quitApplication();
             return true;
@@ -1469,6 +1537,27 @@ int main(int argc, char** argv) {
                         prompt_state = beginPrompt(ePromptMode::ADD_BREAKPOINT);
                         return true;
                     }
+                    if (command.value() == eCommand::REMOVE_BREAKPOINT) {
+                        if (app_config.breakpoints.empty()) {
+                            transient_status_message = "No breakpoints to remove";
+                            return true;
+                        }
+                        if (focused_pane != eFocusPane::BREAKPOINTS) {
+                            focused_pane             = eFocusPane::BREAKPOINTS;
+                            breakpoint_action_mode   = eBreakpointActionMode::REMOVE;
+                            transient_status_message = "Choose breakpoint with j/k, press Return to remove, Esc to cancel";
+                            refreshAllPanes();
+                            return true;
+                        }
+
+                        app_config.breakpoints.erase(app_config.breakpoints.begin() + static_cast<std::ptrdiff_t>(breakpoints_pane.selected_index));
+                        if (breakpoints_pane.selected_index > 0 && breakpoints_pane.selected_index >= app_config.breakpoints.size()) {
+                            --breakpoints_pane.selected_index;
+                        }
+                        applyBreakpointsToActiveSession();
+                        refreshAllPanes();
+                        return true;
+                    }
                     if (command.value() == eCommand::SET_MEMORY_TARGET) {
                         prompt_state = beginPrompt(ePromptMode::MEMORY_TARGET, manual_memory_target);
                         return true;
@@ -1559,6 +1648,13 @@ int main(int argc, char** argv) {
             const bool handled = handleVerticalNavigation(event, watch_list_pane);
             if (handled) {
                 memory_navigation_offset = 0;
+                refreshAllPanes();
+            }
+            return handled;
+        }
+        if (focused_pane == eFocusPane::BREAKPOINTS) {
+            const bool handled = handleVerticalNavigation(event, breakpoints_pane);
+            if (handled) {
                 refreshAllPanes();
             }
             return handled;

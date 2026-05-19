@@ -215,6 +215,9 @@ namespace {
         if (value == "watch_list") {
             return eFocusPane::WATCH_LIST;
         }
+        if (value == "breakpoints") {
+            return eFocusPane::BREAKPOINTS;
+        }
 
         return fallback;
     }

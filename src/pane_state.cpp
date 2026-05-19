@@ -4,8 +4,8 @@
 
 namespace {
 
-    constexpr std::array<eFocusPane, 5> kFocusOrder = {
-        eFocusPane::LOCALS, eFocusPane::STACK, eFocusPane::MEMORY_VIEW, eFocusPane::DISASSEMBLY_VIEW, eFocusPane::WATCH_LIST,
+    constexpr std::array<eFocusPane, 6> kFocusOrder = {
+        eFocusPane::LOCALS, eFocusPane::STACK, eFocusPane::MEMORY_VIEW, eFocusPane::DISASSEMBLY_VIEW, eFocusPane::WATCH_LIST, eFocusPane::BREAKPOINTS,
     };
 
 } // namespace
@@ -33,6 +33,7 @@ bool isPaneVisible(eFocusPane focused_pane, const SViewVisibilityState& view_vis
         case eFocusPane::LOCALS: return true;
         case eFocusPane::STACK: return true;
         case eFocusPane::WATCH_LIST: return true;
+        case eFocusPane::BREAKPOINTS: return true;
         case eFocusPane::MEMORY_VIEW: return view_visibility.show_memory_view;
         case eFocusPane::DISASSEMBLY_VIEW: return view_visibility.show_disassembly_view;
     }
@@ -86,10 +87,12 @@ void executeCommand(eCommand command, eFocusPane& focused_pane, SViewVisibilityS
             focused_pane                          = eFocusPane::DISASSEMBLY_VIEW;
             break;
         case eCommand::FOCUS_WATCH_LIST: focused_pane = eFocusPane::WATCH_LIST; break;
+        case eCommand::FOCUS_BREAKPOINTS: focused_pane = eFocusPane::BREAKPOINTS; break;
         case eCommand::ADD_WATCH: break;
         case eCommand::EDIT_WATCH: break;
         case eCommand::REMOVE_WATCH: break;
         case eCommand::ADD_BREAKPOINT: break;
+        case eCommand::REMOVE_BREAKPOINT: break;
         case eCommand::SET_MEMORY_TARGET: break;
         case eCommand::CONTINUE_EXECUTION: break;
         case eCommand::STEP_OVER: break;
@@ -124,6 +127,9 @@ std::optional<eCommand> parseCommandName(const std::string& command_name) {
     if (command_name == "focus_watch_list") {
         return eCommand::FOCUS_WATCH_LIST;
     }
+    if (command_name == "focus_breakpoints") {
+        return eCommand::FOCUS_BREAKPOINTS;
+    }
     if (command_name == "add_watch") {
         return eCommand::ADD_WATCH;
     }
@@ -135,6 +141,9 @@ std::optional<eCommand> parseCommandName(const std::string& command_name) {
     }
     if (command_name == "add_breakpoint") {
         return eCommand::ADD_BREAKPOINT;
+    }
+    if (command_name == "remove_breakpoint") {
+        return eCommand::REMOVE_BREAKPOINT;
     }
     if (command_name == "set_memory_target") {
         return eCommand::SET_MEMORY_TARGET;
@@ -186,10 +195,12 @@ std::string commandDescription(eCommand command) {
         case eCommand::FOCUS_MEMORY: return "Focus Memory";
         case eCommand::FOCUS_DISASSEMBLY: return "Focus Disassembly";
         case eCommand::FOCUS_WATCH_LIST: return "Focus Watch List";
+        case eCommand::FOCUS_BREAKPOINTS: return "Focus Breakpoints";
         case eCommand::ADD_WATCH: return "Add Watch";
         case eCommand::EDIT_WATCH: return "Edit Watch";
         case eCommand::REMOVE_WATCH: return "Remove Watch";
         case eCommand::ADD_BREAKPOINT: return "Add Breakpoint";
+        case eCommand::REMOVE_BREAKPOINT: return "Remove Breakpoint";
         case eCommand::SET_MEMORY_TARGET: return "Set Memory Target";
         case eCommand::CONTINUE_EXECUTION: return "Continue";
         case eCommand::STEP_OVER: return "Step Over";
@@ -212,9 +223,10 @@ std::vector<SKeybinding> defaultKeybindings() {
     return {
         {.keys = "Space l", .command = eCommand::FOCUS_LOCALS},       {.keys = "Space s", .command = eCommand::FOCUS_STACK},
         {.keys = "Space m", .command = eCommand::FOCUS_MEMORY},       {.keys = "Space d", .command = eCommand::FOCUS_DISASSEMBLY},
-        {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},   {.keys = "Space n", .command = eCommand::ADD_WATCH},
-        {.keys = "Space e", .command = eCommand::EDIT_WATCH},         {.keys = "Space x", .command = eCommand::REMOVE_WATCH},
-        {.keys = "Space b", .command = eCommand::ADD_BREAKPOINT},     {.keys = "Space g", .command = eCommand::SET_MEMORY_TARGET},
+        {.keys = "Space w", .command = eCommand::FOCUS_WATCH_LIST},   {.keys = "Space B", .command = eCommand::FOCUS_BREAKPOINTS},
+        {.keys = "Space n", .command = eCommand::ADD_WATCH},          {.keys = "Space e", .command = eCommand::EDIT_WATCH},
+        {.keys = "Space x", .command = eCommand::REMOVE_WATCH},       {.keys = "Space b", .command = eCommand::ADD_BREAKPOINT},
+        {.keys = "Space X", .command = eCommand::REMOVE_BREAKPOINT},  {.keys = "Space g", .command = eCommand::SET_MEMORY_TARGET},
         {.keys = "Space C", .command = eCommand::CONTINUE_EXECUTION}, {.keys = "Space o", .command = eCommand::STEP_OVER},
         {.keys = "Space i", .command = eCommand::STEP_INTO},          {.keys = "Space O", .command = eCommand::STEP_OUT},
         {.keys = "Space p", .command = eCommand::PAUSE_EXECUTION},    {.keys = "Space T", .command = eCommand::TERMINATE_SESSION},

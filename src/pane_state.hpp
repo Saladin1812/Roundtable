@@ -13,6 +13,7 @@ enum class eFocusPane : std::uint8_t {
     MEMORY_VIEW,
     DISASSEMBLY_VIEW,
     WATCH_LIST,
+    BREAKPOINTS,
 };
 
 enum class eCommand : std::uint8_t {
@@ -21,10 +22,12 @@ enum class eCommand : std::uint8_t {
     FOCUS_MEMORY,
     FOCUS_DISASSEMBLY,
     FOCUS_WATCH_LIST,
+    FOCUS_BREAKPOINTS,
     ADD_WATCH,
     EDIT_WATCH,
     REMOVE_WATCH,
     ADD_BREAKPOINT,
+    REMOVE_BREAKPOINT,
     SET_MEMORY_TARGET,
     CONTINUE_EXECUTION,
     STEP_OVER,
