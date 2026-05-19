@@ -47,6 +47,9 @@ namespace {
         NONE,
         EDIT,
         REMOVE,
+        MOVE_UP,
+        MOVE_DOWN,
+        DUPLICATE,
     };
 
     enum class eBreakpointActionMode : std::uint8_t {
@@ -267,7 +270,8 @@ namespace {
                 }
                 break;
             case eFocusPane::WATCH_LIST:
-                if (command == eCommand::EDIT_WATCH || command == eCommand::REMOVE_WATCH || command == eCommand::ADD_WATCH) {
+                if (command == eCommand::EDIT_WATCH || command == eCommand::REMOVE_WATCH || command == eCommand::ADD_WATCH || command == eCommand::MOVE_WATCH_UP ||
+                    command == eCommand::MOVE_WATCH_DOWN || command == eCommand::DUPLICATE_WATCH) {
                     return 0;
                 }
                 if (command == eCommand::SET_MEMORY_TARGET) {
@@ -991,6 +995,93 @@ int main(int argc, char** argv) {
         transient_status_message = "Breakpoint applied";
     };
 
+    const auto moveSelectedWatchUp = [&]() {
+        if (watch_list_pane.selected_index == 0 || watch_list_pane.selected_index >= watch_expressions.size()) {
+            transient_status_message = "Watch is already at the top";
+            return;
+        }
+
+        std::swap(watch_expressions[watch_list_pane.selected_index], watch_expressions[watch_list_pane.selected_index - 1]);
+        --watch_list_pane.selected_index;
+        memory_navigation_offset = 0;
+        transient_status_message = "Watch moved up";
+        refreshAllPanes();
+    };
+
+    const auto moveSelectedWatchDown = [&]() {
+        if (watch_list_pane.selected_index >= watch_expressions.size() || watch_list_pane.selected_index + 1 >= watch_expressions.size()) {
+            transient_status_message = "Watch is already at the bottom";
+            return;
+        }
+
+        std::swap(watch_expressions[watch_list_pane.selected_index], watch_expressions[watch_list_pane.selected_index + 1]);
+        ++watch_list_pane.selected_index;
+        memory_navigation_offset = 0;
+        transient_status_message = "Watch moved down";
+        refreshAllPanes();
+    };
+
+    const auto duplicateSelectedWatch = [&]() {
+        if (watch_list_pane.selected_index >= watch_expressions.size()) {
+            transient_status_message = "No watch selected";
+            return;
+        }
+
+        const auto insert_position = watch_expressions.begin() + static_cast<std::ptrdiff_t>(watch_list_pane.selected_index + 1);
+        watch_expressions.insert(insert_position, watch_expressions[watch_list_pane.selected_index]);
+        ++watch_list_pane.selected_index;
+        memory_navigation_offset = 0;
+        transient_status_message = "Watch duplicated";
+        refreshAllPanes();
+    };
+
+    const auto performWatchAction = [&](eWatchActionMode action_mode) {
+        if (watch_expressions.empty()) {
+            transient_status_message = "No watch entries";
+            return;
+        }
+
+        switch (action_mode) {
+            case eWatchActionMode::NONE: break;
+            case eWatchActionMode::EDIT:
+                if (watch_list_pane.selected_index < watch_expressions.size()) {
+                    prompt_state = beginPrompt(ePromptMode::EDIT_WATCH, watch_expressions[watch_list_pane.selected_index].expression, true);
+                }
+                break;
+            case eWatchActionMode::REMOVE:
+                if (watch_list_pane.selected_index < watch_expressions.size()) {
+                    watch_expressions.erase(watch_expressions.begin() + static_cast<std::ptrdiff_t>(watch_list_pane.selected_index));
+                    if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
+                        --watch_list_pane.selected_index;
+                    }
+                    memory_navigation_offset = 0;
+                    transient_status_message = "Watch removed";
+                    refreshAllPanes();
+                }
+                break;
+            case eWatchActionMode::MOVE_UP: moveSelectedWatchUp(); break;
+            case eWatchActionMode::MOVE_DOWN: moveSelectedWatchDown(); break;
+            case eWatchActionMode::DUPLICATE: duplicateSelectedWatch(); break;
+        }
+    };
+
+    const auto chooseOrPerformWatchAction = [&](eWatchActionMode action_mode, std::string choose_message) {
+        if (watch_expressions.empty()) {
+            transient_status_message = "No watch entries";
+            return;
+        }
+
+        if (focused_pane != eFocusPane::WATCH_LIST) {
+            focused_pane             = eFocusPane::WATCH_LIST;
+            watch_action_mode        = action_mode;
+            transient_status_message = std::move(choose_message);
+            refreshAllPanes();
+            return;
+        }
+
+        performWatchAction(action_mode);
+    };
+
     const auto reloadConfig = [&] {
         if (isDapControlRunning() || session_state == eDebuggerSessionState::RUNNING || session_state == eDebuggerSessionState::LAUNCHING ||
             session_state == eDebuggerSessionState::TERMINATING) {
@@ -1613,23 +1704,9 @@ int main(int argc, char** argv) {
             }
 
             if (event == Event::Return) {
-                if (watch_action_mode == eWatchActionMode::EDIT) {
-                    if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
-                        prompt_state = beginPrompt(ePromptMode::EDIT_WATCH, watch_expressions[watch_list_pane.selected_index].expression, true);
-                    }
-                } else if (watch_action_mode == eWatchActionMode::REMOVE) {
-                    if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
-                        watch_expressions.erase(watch_expressions.begin() + static_cast<std::ptrdiff_t>(watch_list_pane.selected_index));
-                        if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
-                            --watch_list_pane.selected_index;
-                        }
-                        memory_navigation_offset = 0;
-                        refreshAllPanes();
-                    }
-                }
+                performWatchAction(watch_action_mode);
 
-                watch_action_mode        = eWatchActionMode::NONE;
-                transient_status_message = {};
+                watch_action_mode = eWatchActionMode::NONE;
                 return true;
             }
 
@@ -1728,44 +1805,23 @@ int main(int argc, char** argv) {
                         return true;
                     }
                     if (command.value() == eCommand::EDIT_WATCH) {
-                        if (watch_expressions.empty()) {
-                            transient_status_message = "No watch entries to edit";
-                            return true;
-                        }
-                        if (focused_pane != eFocusPane::WATCH_LIST) {
-                            focused_pane             = eFocusPane::WATCH_LIST;
-                            watch_action_mode        = eWatchActionMode::EDIT;
-                            transient_status_message = "Choose watch with j/k, press Return to edit, Esc to cancel";
-                            refreshAllPanes();
-                            return true;
-                        }
-                        if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
-                            prompt_state = beginPrompt(ePromptMode::EDIT_WATCH, watch_expressions[watch_list_pane.selected_index].expression, true);
-                            return true;
-                        }
+                        chooseOrPerformWatchAction(eWatchActionMode::EDIT, "Choose watch with j/k, press Return to edit, Esc to cancel");
                         return true;
                     }
                     if (command.value() == eCommand::REMOVE_WATCH) {
-                        if (watch_expressions.empty()) {
-                            transient_status_message = "No watch entries to remove";
-                            return true;
-                        }
-                        if (focused_pane != eFocusPane::WATCH_LIST) {
-                            focused_pane             = eFocusPane::WATCH_LIST;
-                            watch_action_mode        = eWatchActionMode::REMOVE;
-                            transient_status_message = "Choose watch with j/k, press Return to remove, Esc to cancel";
-                            refreshAllPanes();
-                            return true;
-                        }
-                        if (!watch_expressions.empty() && watch_list_pane.selected_index < watch_expressions.size()) {
-                            watch_expressions.erase(watch_expressions.begin() + static_cast<std::ptrdiff_t>(watch_list_pane.selected_index));
-                            if (watch_list_pane.selected_index > 0 && watch_list_pane.selected_index >= watch_expressions.size()) {
-                                --watch_list_pane.selected_index;
-                            }
-                            focused_pane             = eFocusPane::WATCH_LIST;
-                            memory_navigation_offset = 0;
-                            refreshAllPanes();
-                        }
+                        chooseOrPerformWatchAction(eWatchActionMode::REMOVE, "Choose watch with j/k, press Return to remove, Esc to cancel");
+                        return true;
+                    }
+                    if (command.value() == eCommand::MOVE_WATCH_UP) {
+                        chooseOrPerformWatchAction(eWatchActionMode::MOVE_UP, "Choose watch with j/k, press Return to move up, Esc to cancel");
+                        return true;
+                    }
+                    if (command.value() == eCommand::MOVE_WATCH_DOWN) {
+                        chooseOrPerformWatchAction(eWatchActionMode::MOVE_DOWN, "Choose watch with j/k, press Return to move down, Esc to cancel");
+                        return true;
+                    }
+                    if (command.value() == eCommand::DUPLICATE_WATCH) {
+                        chooseOrPerformWatchAction(eWatchActionMode::DUPLICATE, "Choose watch with j/k, press Return to duplicate, Esc to cancel");
                         return true;
                     }
                     if (command.value() == eCommand::ADD_BREAKPOINT) {
