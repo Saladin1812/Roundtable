@@ -62,6 +62,8 @@ TEST_CASE("parseCommandName returns commands for known names") {
     CHECK(parseCommandName("add_breakpoint").value() == eCommand::ADD_BREAKPOINT);
     REQUIRE(parseCommandName("remove_breakpoint").has_value());
     CHECK(parseCommandName("remove_breakpoint").value() == eCommand::REMOVE_BREAKPOINT);
+    REQUIRE(parseCommandName("toggle_breakpoint").has_value());
+    CHECK(parseCommandName("toggle_breakpoint").value() == eCommand::TOGGLE_BREAKPOINT);
     REQUIRE(parseCommandName("set_memory_target").has_value());
     CHECK(parseCommandName("set_memory_target").value() == eCommand::SET_MEMORY_TARGET);
     REQUIRE(parseCommandName("continue_execution").has_value());

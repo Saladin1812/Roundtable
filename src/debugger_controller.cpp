@@ -71,9 +71,12 @@ bool configureDapBreakpoints(CDapDebugSession& dap_session, const std::vector<SS
             continue;
         }
 
-        breakpoints_by_source[std::filesystem::absolute(breakpoint.source_path).string()].push_back({
-            .line = breakpoint.line,
-        });
+        auto& source_breakpoints = breakpoints_by_source[std::filesystem::absolute(breakpoint.source_path).string()];
+        if (breakpoint.enabled) {
+            source_breakpoints.push_back({
+                .line = breakpoint.line,
+            });
+        }
     }
 
     for (const auto& [source_path, source_breakpoints] : breakpoints_by_source) {

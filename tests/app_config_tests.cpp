@@ -64,6 +64,7 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "focus_memory = \"Space x\"\n";
         config_stream << "focus_breakpoints = \"Space P\"\n";
         config_stream << "remove_breakpoint = \"Space D\"\n";
+        config_stream << "toggle_breakpoint = \"Space E\"\n";
         config_stream << "toggle_shortcuts_help = \"Space h\"\n";
         config_stream << "cycle_theme = \"Space C\"\n";
     }
@@ -103,8 +104,10 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     REQUIRE(config.breakpoints.size() == 2);
     CHECK(config.breakpoints[0].source_path == std::filesystem::path("src/main.cpp"));
     CHECK(config.breakpoints[0].line == 42);
+    CHECK(config.breakpoints[0].enabled);
     CHECK(config.breakpoints[1].source_path == std::filesystem::path("/tmp/sample.cpp"));
     CHECK(config.breakpoints[1].line == 7);
+    CHECK(config.breakpoints[1].enabled);
     REQUIRE(config.watches.size() == 2);
     CHECK(config.watches[0] == "sample_value");
     CHECK(config.watches[1] == "ptr->field");
@@ -121,6 +124,11 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::REMOVE_BREAKPOINT; });
     REQUIRE(remove_breakpoint_keybinding != config.keybindings.end());
     CHECK(remove_breakpoint_keybinding->keys == "Space D");
+
+    const auto toggle_breakpoint_keybinding =
+        std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_BREAKPOINT; });
+    REQUIRE(toggle_breakpoint_keybinding != config.keybindings.end());
+    CHECK(toggle_breakpoint_keybinding->keys == "Space E");
 
     const auto help_keybinding = std::ranges::find_if(config.keybindings, [](const SKeybinding& keybinding) { return keybinding.command == eCommand::TOGGLE_SHORTCUTS_HELP; });
     REQUIRE(help_keybinding != config.keybindings.end());

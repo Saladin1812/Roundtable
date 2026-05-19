@@ -1,6 +1,7 @@
 #include <array>
 #include <algorithm>
 #include <atomic>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -178,8 +179,9 @@ namespace {
         rows.reserve(breakpoints.size());
 
         for (std::size_t index = 0; index < breakpoints.size(); ++index) {
-            const auto& breakpoint = breakpoints[index];
-            rows.push_back("#" + std::to_string(index) + " :" + std::to_string(breakpoint.line) + " " + compactPathForStatus(breakpoint.source_path.string()));
+            const auto&       breakpoint = breakpoints[index];
+            const std::string state      = breakpoint.enabled ? "[x] " : "[ ] ";
+            rows.push_back(state + "#" + std::to_string(index) + " :" + std::to_string(breakpoint.line) + " " + compactPathForStatus(breakpoint.source_path.string()));
         }
 
         return rows;
@@ -208,7 +210,7 @@ namespace {
                 }
                 break;
             case eFocusPane::BREAKPOINTS:
-                if (command == eCommand::ADD_BREAKPOINT || command == eCommand::REMOVE_BREAKPOINT) {
+                if (command == eCommand::ADD_BREAKPOINT || command == eCommand::REMOVE_BREAKPOINT || command == eCommand::TOGGLE_BREAKPOINT) {
                     return 0;
                 }
                 break;
@@ -853,6 +855,39 @@ int main(int argc, char** argv) {
         refreshAllPanes();
     };
 
+    const auto clearBreakpointSourceInActiveSession = [&](const std::filesystem::path& source_path) {
+        if (session_state != eDebuggerSessionState::STOPPED) {
+            return true;
+        }
+
+        auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
+        if (dap_session == nullptr || source_path.empty()) {
+            return true;
+        }
+
+        const auto response = dap_session->setBreakpoints({
+            .source_path = std::filesystem::absolute(source_path).string(),
+            .breakpoints = {},
+        });
+        if (!response.success) {
+            transient_status_message = "DAP clear breakpoints failed: " + response.error_message;
+            return false;
+        }
+
+        return true;
+    };
+
+    const auto hasBreakpointForSource = [&](const std::filesystem::path& source_path) {
+        if (source_path.empty()) {
+            return false;
+        }
+
+        const auto absolute_source_path = std::filesystem::absolute(source_path);
+        return std::ranges::any_of(app_config.breakpoints, [&](const SSourceBreakpointConfig& breakpoint) {
+            return !breakpoint.source_path.empty() && std::filesystem::absolute(breakpoint.source_path) == absolute_source_path;
+        });
+    };
+
     const auto applyBreakpointsToActiveSession = [&]() {
         if (isDapControlRunning()) {
             transient_status_message = "Breakpoints cannot be changed while debugger is running";
@@ -1418,11 +1453,15 @@ int main(int argc, char** argv) {
 
             if (event == Event::Return) {
                 if (breakpoint_action_mode == eBreakpointActionMode::REMOVE && breakpoints_pane.selected_index < app_config.breakpoints.size()) {
+                    const auto removed_source_path = app_config.breakpoints[breakpoints_pane.selected_index].source_path;
                     app_config.breakpoints.erase(app_config.breakpoints.begin() + static_cast<std::ptrdiff_t>(breakpoints_pane.selected_index));
                     if (breakpoints_pane.selected_index > 0 && breakpoints_pane.selected_index >= app_config.breakpoints.size()) {
                         --breakpoints_pane.selected_index;
                     }
                     applyBreakpointsToActiveSession();
+                    if (!hasBreakpointForSource(removed_source_path)) {
+                        clearBreakpointSourceInActiveSession(removed_source_path);
+                    }
                     refreshAllPanes();
                 }
 
@@ -1550,12 +1589,35 @@ int main(int argc, char** argv) {
                             return true;
                         }
 
+                        const auto removed_source_path = app_config.breakpoints[breakpoints_pane.selected_index].source_path;
                         app_config.breakpoints.erase(app_config.breakpoints.begin() + static_cast<std::ptrdiff_t>(breakpoints_pane.selected_index));
                         if (breakpoints_pane.selected_index > 0 && breakpoints_pane.selected_index >= app_config.breakpoints.size()) {
                             --breakpoints_pane.selected_index;
                         }
                         applyBreakpointsToActiveSession();
+                        if (!hasBreakpointForSource(removed_source_path)) {
+                            clearBreakpointSourceInActiveSession(removed_source_path);
+                        }
                         refreshAllPanes();
+                        return true;
+                    }
+                    if (command.value() == eCommand::TOGGLE_BREAKPOINT) {
+                        if (app_config.breakpoints.empty()) {
+                            transient_status_message = "No breakpoints to toggle";
+                            return true;
+                        }
+                        if (focused_pane != eFocusPane::BREAKPOINTS) {
+                            focused_pane             = eFocusPane::BREAKPOINTS;
+                            transient_status_message = "Choose breakpoint with j/k, press Space E to toggle";
+                            refreshAllPanes();
+                            return true;
+                        }
+                        if (breakpoints_pane.selected_index < app_config.breakpoints.size()) {
+                            auto& breakpoint   = app_config.breakpoints[breakpoints_pane.selected_index];
+                            breakpoint.enabled = !breakpoint.enabled;
+                            applyBreakpointsToActiveSession();
+                            refreshAllPanes();
+                        }
                         return true;
                     }
                     if (command.value() == eCommand::SET_MEMORY_TARGET) {
