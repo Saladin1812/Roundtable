@@ -1,11 +1,39 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
+#include <string>
 
 #include "app_config.hpp"
+
+namespace {
+
+    class CEnvironmentVariableGuard {
+      public:
+        explicit CEnvironmentVariableGuard(const char* name) : name_(name) {
+            if (const char* value = std::getenv(name); value != nullptr) {
+                previous_value_ = std::string(value);
+            }
+        }
+
+        ~CEnvironmentVariableGuard() {
+            if (previous_value_.has_value()) {
+                setenv(name_, previous_value_->c_str(), 1);
+            } else {
+                unsetenv(name_);
+            }
+        }
+
+      private:
+        const char*                name_;
+        std::optional<std::string> previous_value_;
+    };
+
+} // namespace
 
 TEST_CASE("loadAppConfig returns defaults when config file is missing") {
     const SAppConfig config = loadAppConfig("/tmp/roundtable-missing-config.toml");
@@ -285,6 +313,56 @@ TEST_CASE("loadAppConfigWithBaseConfig preserves user UI config while overlaying
     CHECK(result.config.watches[0] == "argc");
 
     std::filesystem::remove(overlay_path);
+}
+
+TEST_CASE("initializeUserAppConfig creates XDG user config without overwriting unless forced") {
+    CEnvironmentVariableGuard   xdg_guard("XDG_CONFIG_HOME");
+    CEnvironmentVariableGuard   home_guard("HOME");
+
+    const std::filesystem::path config_home = std::filesystem::temp_directory_path() / "roundtable-test-xdg-config";
+    std::filesystem::remove_all(config_home);
+    setenv("XDG_CONFIG_HOME", config_home.string().c_str(), 1);
+    unsetenv("HOME");
+
+    const auto expected_path = config_home / "roundtable" / "roundtable.toml";
+    CHECK(defaultUserAppConfigPath() == expected_path);
+
+    const auto first_result = initializeUserAppConfig(false);
+    CHECK(first_result.ok);
+    CHECK(first_result.created);
+    CHECK(first_result.path == expected_path);
+    CHECK(std::filesystem::is_regular_file(expected_path));
+
+    {
+        std::ofstream config_stream(expected_path, std::ios::trunc);
+        config_stream << "[session]\n";
+        config_stream << "mode = \"mock\"\n";
+        config_stream << "# user edit\n";
+    }
+
+    const auto second_result = initializeUserAppConfig(false);
+    CHECK(second_result.ok);
+    CHECK_FALSE(second_result.created);
+
+    {
+        std::ifstream     config_stream(expected_path);
+        const std::string contents((std::istreambuf_iterator<char>(config_stream)), std::istreambuf_iterator<char>());
+        CHECK(contents.find("# user edit") != std::string::npos);
+    }
+
+    const auto force_result = initializeUserAppConfig(true);
+    CHECK(force_result.ok);
+    CHECK(force_result.created);
+
+    const SAppConfigLoadResult loaded_config = loadAppConfigWithDiagnostics(expected_path.string());
+    CHECK(loaded_config.diagnostics.empty());
+    CHECK(loaded_config.config.session_mode == eSessionMode::DAP_LAUNCH);
+    CHECK(loaded_config.config.dap_launch.program.empty());
+    CHECK(loaded_config.config.watches.empty());
+    CHECK(loaded_config.config.breakpoints.empty());
+    REQUIRE(loaded_config.config.keybindings.size() >= defaultKeybindings().size());
+
+    std::filesystem::remove_all(config_home);
 }
 
 TEST_CASE("loadAppConfig reads codelldb auto-detect configuration from TOML") {

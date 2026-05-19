@@ -715,6 +715,159 @@ std::optional<std::filesystem::path> findDefaultAppConfigPath() {
     return std::nullopt;
 }
 
+std::filesystem::path defaultUserAppConfigPath() {
+    if (const char* xdg_config_home = std::getenv("XDG_CONFIG_HOME"); xdg_config_home != nullptr && std::string_view(xdg_config_home).size() > 0) {
+        return std::filesystem::path(xdg_config_home) / "roundtable" / "roundtable.toml";
+    }
+
+    if (const char* home = std::getenv("HOME"); home != nullptr && std::string_view(home).size() > 0) {
+        return std::filesystem::path(home) / ".config" / "roundtable" / "roundtable.toml";
+    }
+
+    return std::filesystem::current_path() / "roundtable.toml";
+}
+
+std::string defaultAppConfigTemplate() {
+    return R"toml([session]
+mode = "dap_launch"
+startup_focus = "memory"
+
+[views]
+show_memory = true
+show_disassembly = false
+
+[theme]
+preset = "default"
+# Any theme color can be overridden with #RRGGBB values.
+# selected_* controls selected rows and titles.
+# variable_* controls locals/watch expressions and types.
+# memory_* controls unselected memory rows.
+# selected_memory_* controls selected memory rows separately.
+# selected_background = "#343434"
+# selected_foreground = "#ffffff"
+# title = "#ffffff"
+# variable_name = "#ffffff"
+# variable_type = "#55ffff"
+# selected_variable_name = "#ffffff"
+# selected_variable_type = "#55ffff"
+# watch_error = "#ff5555"
+# selected_watch_error = "#ff5555"
+# memory_address = "#ffff55"
+# memory_hex = "#ffffff"
+# memory_ascii = "#55ff55"
+# selected_memory_address = "#ffff55"
+# selected_memory_hex = "#ffffff"
+# selected_memory_ascii = "#55ff55"
+# memory_highlight_hex = "#111111"
+# memory_highlight_hex_background = "#ffff55"
+# memory_highlight_ascii = "#111111"
+# memory_highlight_ascii_background = "#55ff55"
+# selected_memory_highlight_hex = "#111111"
+# selected_memory_highlight_hex_background = "#ffff55"
+# selected_memory_highlight_ascii = "#111111"
+# selected_memory_highlight_ascii_background = "#55ff55"
+
+[dap_launch]
+# Leave command/liblldb_path empty to use CodeLLDB auto-detection.
+command = ""
+liblldb_path = ""
+program = ""
+arguments = []
+working_directory = "."
+stop_on_entry = true
+continue_once = false
+
+[watches]
+entries = []
+
+[breakpoints]
+entries = []
+
+[codelldb.auto_detect]
+enabled = true
+candidate_roots = []
+
+[keybindings]
+focus_locals = "Space l"
+focus_threads = "Space u"
+focus_stack = "Space s"
+focus_memory = "Space m"
+focus_disassembly = "Space d"
+focus_watch_list = "Space w"
+focus_breakpoints = "Space B"
+add_watch = "Space n"
+edit_watch = "Space e"
+remove_watch = "Space x"
+move_watch_up = "Space K"
+move_watch_down = "Space J"
+duplicate_watch = "Space y"
+add_breakpoint = "Space b"
+remove_breakpoint = "Space X"
+toggle_breakpoint = "Space E"
+continue_execution = "Space C"
+step_over = "Space o"
+step_into = "Space i"
+step_out = "Space O"
+pause_execution = "Space p"
+terminate_session = "Space T"
+restart_session = "Space S"
+choose_profile = "Space P"
+toggle_memory = "Space t"
+toggle_disassembly = "Space a"
+toggle_shortcuts_help = "Space ?"
+)toml";
+}
+
+SAppConfigInitResult initializeUserAppConfig(bool force) {
+    const auto config_path = defaultUserAppConfigPath();
+    if (pathExists(config_path) && !force) {
+        return {
+            .ok      = true,
+            .created = false,
+            .path    = config_path,
+            .message = "config already exists: " + config_path.string(),
+        };
+    }
+
+    std::error_code error_code;
+    std::filesystem::create_directories(config_path.parent_path(), error_code);
+    if (error_code) {
+        return {
+            .ok      = false,
+            .created = false,
+            .path    = config_path,
+            .message = "failed to create config directory: " + error_code.message(),
+        };
+    }
+
+    std::ofstream config_stream(config_path, std::ios::trunc);
+    if (!config_stream.is_open()) {
+        return {
+            .ok      = false,
+            .created = false,
+            .path    = config_path,
+            .message = "failed to write config: " + config_path.string(),
+        };
+    }
+
+    config_stream << defaultAppConfigTemplate();
+    if (!config_stream.good()) {
+        return {
+            .ok      = false,
+            .created = false,
+            .path    = config_path,
+            .message = "failed while writing config: " + config_path.string(),
+        };
+    }
+
+    return {
+        .ok      = true,
+        .created = true,
+        .path    = config_path,
+        .message = "created config: " + config_path.string(),
+    };
+}
+
 SAppConfigLoadResult loadAppConfigForCliWithDiagnostics(const std::string& config_path, bool config_path_explicit) {
     const std::filesystem::path requested_path   = config_path;
     const auto                  default_path     = findDefaultAppConfigPath();

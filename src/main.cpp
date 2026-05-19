@@ -783,8 +783,16 @@ int main(int argc, char** argv) {
         std::cout << "  roundtable                         Start with roundtable.toml, user config, or defaults\n";
         std::cout << "  roundtable --config /tmp/rt.toml   Start with an explicit config file\n";
         std::cout << "  roundtable --profile tests         Use [profiles.tests] from config\n";
+        std::cout << "  roundtable --init-config           Create a user config file if missing\n";
+        std::cout << "  roundtable --init-config --force   Overwrite the user config file\n";
         std::cout << "  roundtable ./mybinary              Force dap_launch for the given binary\n";
         return 0;
+    }
+
+    if (cli_options.init_config) {
+        const auto init_result = initializeUserAppConfig(cli_options.force_init_config);
+        std::cout << init_result.message << '\n';
+        return init_result.ok ? 0 : 1;
     }
 
     const std::string config_path        = cli_options.config_path.string();

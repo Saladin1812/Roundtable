@@ -36,6 +36,19 @@ TEST_CASE("parseCliOptions reads explicit config path") {
     CHECK_FALSE(options.launch_program.has_value());
 }
 
+TEST_CASE("parseCliOptions reads init config flags") {
+    char       arg0[] = "roundtable";
+    char       arg1[] = "--init-config";
+    char       arg2[] = "--force";
+    char*      argv[] = {arg0, arg1, arg2};
+
+    const auto options = parseCliOptions(3, argv);
+
+    CHECK(options.init_config);
+    CHECK(options.force_init_config);
+    CHECK_FALSE(options.launch_program.has_value());
+}
+
 TEST_CASE("parseCliOptions reads config path and launch program") {
     char       arg0[] = "roundtable";
     char       arg1[] = "--config=/tmp/roundtable-generated.toml";

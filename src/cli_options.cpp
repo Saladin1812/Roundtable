@@ -12,6 +12,16 @@ SCliOptions parseCliOptions(int argc, char** argv) {
             continue;
         }
 
+        if (argument == "--init-config") {
+            options.init_config = true;
+            continue;
+        }
+
+        if (argument == "--force") {
+            options.force_init_config = true;
+            continue;
+        }
+
         if (argument == "--config" || argument == "-c") {
             if (argument_index + 1 < argc) {
                 ++argument_index;
