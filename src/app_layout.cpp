@@ -594,13 +594,10 @@ ftxui::Element renderRoundtableLayout(const SAppLayoutState& state) {
                              separator(),
                              text(" " + state.current_status + " ") | color(state.theme.chrome) | flex,
                              separator(),
-                             text(" Tab ") | color(state.theme.chrome),
-                             separator(),
-                             text(" r ") | color(state.theme.chrome),
-                             separator(),
-                             text(" Space ") | color(state.theme.accent),
-                             separator(),
-                             text(" q ") | color(state.theme.chrome),
+                             text(" Tab focus  ") | color(state.theme.chrome),
+                             text(" r refresh  ") | color(state.theme.chrome),
+                             text(" Space menu  ") | color(state.theme.accent),
+                             text(" q quit ") | color(state.theme.chrome),
                          }) |
         border | color(state.theme.chrome);
 
