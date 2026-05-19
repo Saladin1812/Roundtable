@@ -124,6 +124,7 @@ if(BUILD_TESTING)
     tests/session_status_tests.cpp
     tests/memory_view_tests.cpp
     src/app_config.cpp
+    src/app_layout.cpp
     src/app_startup.cpp
     src/app_theme.cpp
     src/codelldb_locator.cpp
