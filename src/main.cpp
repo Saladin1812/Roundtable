@@ -100,6 +100,27 @@ namespace {
         };
     }
 
+    SStoppedLocation selectedStoppedLocation(const SStoppedContext& stopped_context, const SDebugSelection& selection) {
+        if (selection.frame_index < stopped_context.stack_frames.size()) {
+            return stackFrameLocation(stopped_context.stack_frames[selection.frame_index]);
+        }
+
+        return stopped_context.location;
+    }
+
+    std::string sourceBreakpointTextForLocation(const SStoppedContext& stopped_context, const SDebugSelection& selection) {
+        const auto location = selectedStoppedLocation(stopped_context, selection);
+        if (location.source_path.empty() || location.line <= 0) {
+            return "";
+        }
+
+        return location.source_path + ":" + std::to_string(location.line);
+    }
+
+    std::string describeBreakpoint(const SSourceBreakpointConfig& breakpoint) {
+        return compactPathWithParent(breakpoint.source_path.string()) + ":" + std::to_string(breakpoint.line);
+    }
+
     std::vector<std::string> formatStackPaneRows(const std::vector<SStoppedStackFrame>& stack_frames) {
         std::vector<std::string> rows;
         rows.reserve(stack_frames.size());
@@ -328,7 +349,8 @@ int main(int argc, char** argv) {
         stack_pane.title                = " Stack [T:" + std::to_string(debug_selection.thread_id) + "] ";
         stack_pane.rows                 = formatStackPaneRows(stopped_context.stack_frames);
         stack_pane.selected_index       = std::min(debug_selection.frame_index, stack_pane.rows.empty() ? 0UL : stack_pane.rows.size() - 1);
-        breakpoints_pane.title          = " Breakpoints [" + std::to_string(app_config.breakpoints.size()) + "] ";
+        const auto enabled_breakpoints  = std::ranges::count_if(app_config.breakpoints, [](const SSourceBreakpointConfig& breakpoint) { return breakpoint.enabled; });
+        breakpoints_pane.title          = " Breakpoints [" + std::to_string(enabled_breakpoints) + "/" + std::to_string(app_config.breakpoints.size()) + " on] ";
         breakpoints_pane.rows           = formatBreakpointPaneRows(app_config.breakpoints);
         breakpoints_pane.selected_index = std::min(breakpoints_pane.selected_index, breakpoints_pane.rows.empty() ? 0UL : breakpoints_pane.rows.size() - 1);
 
@@ -395,33 +417,34 @@ int main(int argc, char** argv) {
 
         const auto absolute_source_path = std::filesystem::absolute(source_path);
         return std::ranges::any_of(app_config.breakpoints, [&](const SSourceBreakpointConfig& breakpoint) {
-            return !breakpoint.source_path.empty() && std::filesystem::absolute(breakpoint.source_path) == absolute_source_path;
+            return breakpoint.enabled && !breakpoint.source_path.empty() && std::filesystem::absolute(breakpoint.source_path) == absolute_source_path;
         });
     };
 
     const auto applyBreakpointsToActiveSession = [&]() {
         if (isDapControlRunning()) {
             transient_status_message = "Breakpoints cannot be changed while debugger is running";
-            return;
+            return false;
         }
         if (session_state == eDebuggerSessionState::TERMINATED || session_state == eDebuggerSessionState::ERROR) {
             transient_status_message = "Breakpoint queued for next DAP launch";
-            return;
+            return true;
         }
 
         auto* dap_session = dynamic_cast<CDapDebugSession*>(debug_session.get());
         if (dap_session == nullptr) {
             transient_status_message = "Breakpoint queued for next DAP launch";
-            return;
+            return true;
         }
 
         std::string breakpoint_error_message;
         if (!configureDapBreakpoints(*dap_session, app_config.breakpoints, breakpoint_error_message)) {
             transient_status_message = breakpoint_error_message;
-            return;
+            return false;
         }
 
         transient_status_message = "Breakpoint applied";
+        return true;
     };
 
     const auto moveSelectedWatchUp = [&]() {
@@ -897,7 +920,9 @@ int main(int argc, char** argv) {
                         app_config.breakpoints.push_back(breakpoint.value());
                         breakpoints_pane.selected_index = app_config.breakpoints.empty() ? 0UL : app_config.breakpoints.size() - 1;
                         focused_pane                    = eFocusPane::BREAKPOINTS;
-                        applyBreakpointsToActiveSession();
+                        if (applyBreakpointsToActiveSession()) {
+                            transient_status_message = "Breakpoint added: " + describeBreakpoint(breakpoint.value());
+                        }
                     } else {
                         transient_status_message = "Invalid breakpoint, expected source.cpp:line";
                     }
@@ -1086,20 +1111,21 @@ int main(int argc, char** argv) {
 
             if (event == Event::Return) {
                 if (breakpoint_action_mode == eBreakpointActionMode::REMOVE && breakpoints_pane.selected_index < app_config.breakpoints.size()) {
-                    const auto removed_source_path = app_config.breakpoints[breakpoints_pane.selected_index].source_path;
+                    const auto removed_breakpoint  = app_config.breakpoints[breakpoints_pane.selected_index];
+                    const auto removed_source_path = removed_breakpoint.source_path;
                     app_config.breakpoints.erase(app_config.breakpoints.begin() + static_cast<std::ptrdiff_t>(breakpoints_pane.selected_index));
                     if (breakpoints_pane.selected_index > 0 && breakpoints_pane.selected_index >= app_config.breakpoints.size()) {
                         --breakpoints_pane.selected_index;
                     }
-                    applyBreakpointsToActiveSession();
-                    if (!hasBreakpointForSource(removed_source_path)) {
-                        clearBreakpointSourceInActiveSession(removed_source_path);
+                    const bool applied = applyBreakpointsToActiveSession();
+                    const bool cleared = hasBreakpointForSource(removed_source_path) || clearBreakpointSourceInActiveSession(removed_source_path);
+                    if (applied && cleared) {
+                        transient_status_message = "Breakpoint removed: " + describeBreakpoint(removed_breakpoint);
                     }
                     refreshAllPanes();
                 }
 
-                breakpoint_action_mode   = eBreakpointActionMode::NONE;
-                transient_status_message = {};
+                breakpoint_action_mode = eBreakpointActionMode::NONE;
                 return true;
             }
 
@@ -1185,7 +1211,8 @@ int main(int argc, char** argv) {
                         return true;
                     }
                     if (command.value() == eCommand::ADD_BREAKPOINT) {
-                        prompt_state = beginPrompt(ePromptMode::ADD_BREAKPOINT);
+                        const auto current_location_breakpoint = sourceBreakpointTextForLocation(stopped_context, debug_selection);
+                        prompt_state                           = beginPrompt(ePromptMode::ADD_BREAKPOINT, current_location_breakpoint, !current_location_breakpoint.empty());
                         return true;
                     }
                     if (command.value() == eCommand::REMOVE_BREAKPOINT) {
@@ -1201,14 +1228,16 @@ int main(int argc, char** argv) {
                             return true;
                         }
 
-                        const auto removed_source_path = app_config.breakpoints[breakpoints_pane.selected_index].source_path;
+                        const auto removed_breakpoint  = app_config.breakpoints[breakpoints_pane.selected_index];
+                        const auto removed_source_path = removed_breakpoint.source_path;
                         app_config.breakpoints.erase(app_config.breakpoints.begin() + static_cast<std::ptrdiff_t>(breakpoints_pane.selected_index));
                         if (breakpoints_pane.selected_index > 0 && breakpoints_pane.selected_index >= app_config.breakpoints.size()) {
                             --breakpoints_pane.selected_index;
                         }
-                        applyBreakpointsToActiveSession();
-                        if (!hasBreakpointForSource(removed_source_path)) {
-                            clearBreakpointSourceInActiveSession(removed_source_path);
+                        const bool applied = applyBreakpointsToActiveSession();
+                        const bool cleared = hasBreakpointForSource(removed_source_path) || clearBreakpointSourceInActiveSession(removed_source_path);
+                        if (applied && cleared) {
+                            transient_status_message = "Breakpoint removed: " + describeBreakpoint(removed_breakpoint);
                         }
                         refreshAllPanes();
                         return true;
@@ -1227,7 +1256,9 @@ int main(int argc, char** argv) {
                         if (breakpoints_pane.selected_index < app_config.breakpoints.size()) {
                             auto& breakpoint   = app_config.breakpoints[breakpoints_pane.selected_index];
                             breakpoint.enabled = !breakpoint.enabled;
-                            applyBreakpointsToActiveSession();
+                            if (applyBreakpointsToActiveSession()) {
+                                transient_status_message = std::string("Breakpoint ") + (breakpoint.enabled ? "enabled: " : "disabled: ") + describeBreakpoint(breakpoint);
+                            }
                             refreshAllPanes();
                         }
                         return true;

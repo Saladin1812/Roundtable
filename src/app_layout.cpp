@@ -393,7 +393,7 @@ namespace {
                 break;
             case ePromptMode::ADD_BREAKPOINT:
                 title = " Add Breakpoint ";
-                hint  = "Enter source.cpp:line and press Return";
+                hint  = "Enter source.cpp:line, for example src/main.cpp:42";
                 break;
             case ePromptMode::MEMORY_TARGET:
                 title = " Memory Target ";
