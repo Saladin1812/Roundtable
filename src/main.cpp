@@ -17,8 +17,8 @@
 #include <ftxui/dom/elements.hpp>
 
 #include "app_config.hpp"
+#include "app_startup.hpp"
 #include "app_theme.hpp"
-#include "cli_options.hpp"
 #include "dap_session.hpp"
 #include "debugger_controller.hpp"
 #include "debug_session.hpp"
@@ -777,28 +777,14 @@ namespace {
 int main(int argc, char** argv) {
     using namespace ftxui;
 
-    const SCliOptions cli_options = parseCliOptions(argc, argv);
-    if (cli_options.show_help) {
-        std::cout << "Usage: roundtable [--config path] [program-path]\n";
-        std::cout << "  roundtable                         Start with roundtable.toml, user config, or defaults\n";
-        std::cout << "  roundtable --config /tmp/rt.toml   Start with an explicit config file\n";
-        std::cout << "  roundtable --profile tests         Use [profiles.tests] from config\n";
-        std::cout << "  roundtable --init-config           Create a user config file if missing\n";
-        std::cout << "  roundtable --init-config --force   Overwrite the user config file\n";
-        std::cout << "  roundtable ./mybinary              Force dap_launch for the given binary\n";
-        return 0;
+    const SAppStartupResult startup_result = initializeAppStartup(argc, argv, std::cout);
+    if (startup_result.should_exit) {
+        return startup_result.exit_code;
     }
 
-    if (cli_options.init_config) {
-        const auto init_result = initializeUserAppConfig(cli_options.force_init_config);
-        std::cout << init_result.message << '\n';
-        return init_result.ok ? 0 : 1;
-    }
-
-    const std::string config_path        = cli_options.config_path.string();
-    const auto        config_load_result = loadAppConfigForCliWithDiagnostics(config_path, cli_options.config_path_explicit);
-    SAppConfig        app_config         = config_load_result.config;
-    applyCliOverrides(cli_options, app_config);
+    const SCliOptions              cli_options                  = startup_result.cli_options;
+    const std::string              config_path                  = startup_result.config_path;
+    SAppConfig                     app_config                   = startup_result.app_config;
     const auto                     buildActiveTheme             = [&](eThemePreset preset) { return applyThemeOverrides(buildTheme(preset), app_config.theme_overrides); };
     eThemePreset                   active_theme_preset          = app_config.theme_preset;
     SAppTheme                      app_theme                    = buildActiveTheme(active_theme_preset);
