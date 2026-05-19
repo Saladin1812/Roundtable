@@ -24,17 +24,6 @@ struct SDapLaunchConfig {
     bool                     continue_once     = false;
 };
 
-struct SLaunchProfileConfig {
-    std::string                             name;
-    std::optional<std::string>              command;
-    std::optional<std::string>              liblldb_path;
-    std::optional<std::string>              program;
-    std::optional<std::vector<std::string>> arguments;
-    std::optional<std::string>              working_directory;
-    std::optional<bool>                     stop_on_entry;
-    std::optional<bool>                     continue_once;
-};
-
 struct SSourceBreakpointConfig {
     std::filesystem::path source_path;
     std::int64_t          line                 = 0;
@@ -43,6 +32,19 @@ struct SSourceBreakpointConfig {
     bool                  adapter_verified     = false;
     std::int64_t          adapter_line         = 0;
     std::string           adapter_message;
+};
+
+struct SLaunchProfileConfig {
+    std::string                                         name;
+    std::optional<std::string>                          command;
+    std::optional<std::string>                          liblldb_path;
+    std::optional<std::string>                          program;
+    std::optional<std::vector<std::string>>             arguments;
+    std::optional<std::string>                          working_directory;
+    std::optional<bool>                                 stop_on_entry;
+    std::optional<bool>                                 continue_once;
+    std::optional<std::vector<std::string>>             watches;
+    std::optional<std::vector<SSourceBreakpointConfig>> breakpoints;
 };
 
 struct SCodeLldbAutoDetectConfig {

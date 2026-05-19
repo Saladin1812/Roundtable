@@ -51,6 +51,13 @@ arguments = []
 working_directory = "."
 stop_on_entry = true
 continue_once = false
+watches = [
+  "sample_value",
+  "sample_bytes",
+]
+breakpoints = [
+  "samples/dap_sample_target.cpp:10",
+]
 
 [profiles.tests]
 program = "./build/roundtable_tests"
@@ -58,6 +65,7 @@ arguments = []
 working_directory = "."
 stop_on_entry = true
 continue_once = false
+# Omit watches/breakpoints to inherit the global lists below.
 
 [watches]
 entries = [

@@ -260,6 +260,8 @@ namespace {
             .working_directory = std::nullopt,
             .stop_on_entry     = std::nullopt,
             .continue_once     = std::nullopt,
+            .watches           = std::nullopt,
+            .breakpoints       = std::nullopt,
         });
         return config.launch_profiles.back();
     }
@@ -286,6 +288,12 @@ namespace {
         }
         if (profile.continue_once.has_value()) {
             config.dap_launch.continue_once = profile.continue_once.value();
+        }
+        if (profile.watches.has_value()) {
+            config.watches = profile.watches.value();
+        }
+        if (profile.breakpoints.has_value()) {
+            config.breakpoints = profile.breakpoints.value();
         }
     }
 
@@ -514,6 +522,26 @@ SAppConfigLoadResult loadAppConfigWithDiagnostics(const std::string& config_path
                 } else {
                     result.diagnostics.push_back(lineDiagnostic(value_line_number, "invalid boolean for " + current_section + ".continue_once"));
                 }
+            } else if (key == "watches") {
+                if (!isStringArraySyntax(value)) {
+                    result.diagnostics.push_back(lineDiagnostic(value_line_number, "invalid string array for " + current_section + ".watches"));
+                }
+                profile.watches = parseStringArray(value);
+            } else if (key == "breakpoints") {
+                if (!isStringArraySyntax(value)) {
+                    result.diagnostics.push_back(lineDiagnostic(value_line_number, "invalid string array for " + current_section + ".breakpoints"));
+                }
+
+                std::vector<SSourceBreakpointConfig> parsed_breakpoints;
+                for (const auto& item : parseStringArray(value)) {
+                    const auto parsed_breakpoint = parseSourceBreakpointConfig(item);
+                    if (parsed_breakpoint.has_value()) {
+                        parsed_breakpoints.push_back(parsed_breakpoint.value());
+                    } else {
+                        result.diagnostics.push_back(lineDiagnostic(value_line_number, "invalid launch profile breakpoint entry: " + item));
+                    }
+                }
+                profile.breakpoints = std::move(parsed_breakpoints);
             } else {
                 result.diagnostics.push_back(lineDiagnostic(value_line_number, "unknown launch profile key: " + key));
             }

@@ -100,6 +100,8 @@ TEST_CASE("applyCliOverrides applies selected launch profile") {
                     .working_directory = "/tmp/test-dir",
                     .stop_on_entry     = std::nullopt,
                     .continue_once     = false,
+                    .watches           = std::nullopt,
+                    .breakpoints       = std::nullopt,
                 },
             },
     };

@@ -56,6 +56,8 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
         config_stream << "arguments = [\"--suite\", \"unit\"]\n";
         config_stream << "working_directory = \"/tmp/tests\"\n";
         config_stream << "continue_once = false\n";
+        config_stream << "watches = [\"test_value\", \"test_ptr->field\"]\n";
+        config_stream << "breakpoints = [\"/tmp/tests.cpp:17\"]\n";
         config_stream << "\n";
         config_stream << "[breakpoints]\n";
         config_stream << "entries = [\n";
@@ -116,6 +118,14 @@ TEST_CASE("loadAppConfig reads views and keybinding overrides from TOML") {
     REQUIRE(config.launch_profiles[0].arguments.has_value());
     CHECK(config.launch_profiles[0].arguments.value()[0] == "--suite");
     CHECK(config.launch_profiles[0].arguments.value()[1] == "unit");
+    REQUIRE(config.launch_profiles[0].watches.has_value());
+    REQUIRE(config.launch_profiles[0].watches.value().size() == 2);
+    CHECK(config.launch_profiles[0].watches.value()[0] == "test_value");
+    CHECK(config.launch_profiles[0].watches.value()[1] == "test_ptr->field");
+    REQUIRE(config.launch_profiles[0].breakpoints.has_value());
+    REQUIRE(config.launch_profiles[0].breakpoints.value().size() == 1);
+    CHECK(config.launch_profiles[0].breakpoints.value()[0].source_path == std::filesystem::path("/tmp/tests.cpp"));
+    CHECK(config.launch_profiles[0].breakpoints.value()[0].line == 17);
     REQUIRE(config.breakpoints.size() == 2);
     CHECK(config.breakpoints[0].source_path == std::filesystem::path("src/main.cpp"));
     CHECK(config.breakpoints[0].line == 42);
@@ -186,6 +196,14 @@ TEST_CASE("loadAppConfig applies selected launch profile as an overlay") {
         config_stream << "arguments = [\"--unit\"]\n";
         config_stream << "working_directory = \"/tmp/test-dir\"\n";
         config_stream << "continue_once = false\n";
+        config_stream << "watches = [\"test_value\"]\n";
+        config_stream << "breakpoints = [\"/tmp/tests.cpp:17\"]\n";
+        config_stream << "\n";
+        config_stream << "[watches]\n";
+        config_stream << "entries = [\"global_value\"]\n";
+        config_stream << "\n";
+        config_stream << "[breakpoints]\n";
+        config_stream << "entries = [\"/tmp/global.cpp:9\"]\n";
     }
 
     const SAppConfigLoadResult result = loadAppConfigWithDiagnostics(config_path.string());
@@ -201,6 +219,11 @@ TEST_CASE("loadAppConfig applies selected launch profile as an overlay") {
     CHECK(result.config.dap_launch.working_directory == "/tmp/test-dir");
     CHECK(result.config.dap_launch.stop_on_entry);
     CHECK_FALSE(result.config.dap_launch.continue_once);
+    REQUIRE(result.config.watches.size() == 1);
+    CHECK(result.config.watches[0] == "test_value");
+    REQUIRE(result.config.breakpoints.size() == 1);
+    CHECK(result.config.breakpoints[0].source_path == std::filesystem::path("/tmp/tests.cpp"));
+    CHECK(result.config.breakpoints[0].line == 17);
 
     std::filesystem::remove(config_path);
 }
@@ -248,6 +271,8 @@ TEST_CASE("loadAppConfigWithDiagnostics reports malformed config entries") {
         config_stream << "\n";
         config_stream << "[profiles.bad]\n";
         config_stream << "continue_once = maybe\n";
+        config_stream << "watches = \"bad\"\n";
+        config_stream << "breakpoints = [\"missing-line\"]\n";
         config_stream << "unknown = true\n";
         config_stream << "\n";
         config_stream << "[unknown]\n";
@@ -268,6 +293,8 @@ TEST_CASE("loadAppConfigWithDiagnostics reports malformed config entries") {
     CHECK(has_diagnostic("invalid breakpoint entry"));
     CHECK(has_diagnostic("unknown keybinding command"));
     CHECK(has_diagnostic("invalid boolean for profiles.bad.continue_once"));
+    CHECK(has_diagnostic("invalid string array for profiles.bad.watches"));
+    CHECK(has_diagnostic("invalid launch profile breakpoint entry"));
     CHECK(has_diagnostic("unknown launch profile key"));
     CHECK(has_diagnostic("unknown section [unknown]"));
     CHECK(has_diagnostic("expected key = value"));
