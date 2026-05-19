@@ -24,6 +24,7 @@
 #include "debug_session.hpp"
 #include "pane_refresh.hpp"
 #include "pane_state.hpp"
+#include "session_status.hpp"
 
 namespace {
 
@@ -156,26 +157,6 @@ namespace {
         }
 
         return ".../" + source_path.substr(parent_start + 1);
-    }
-
-    std::string formatStoppedLocation(const SStoppedLocation& stopped_location) {
-        if (stopped_location.function_name.empty() && stopped_location.source_path.empty() && stopped_location.line == 0) {
-            return {};
-        }
-
-        std::string location = " " + compactPathForStatus(stopped_location.source_path);
-        if (stopped_location.line > 0) {
-            location += ":" + std::to_string(stopped_location.line);
-            if (stopped_location.column > 0) {
-                location += ":" + std::to_string(stopped_location.column);
-            }
-        }
-
-        if (!stopped_location.function_name.empty()) {
-            location += " " + stopped_location.function_name + "()";
-        }
-
-        return location + " ";
     }
 
     SStoppedLocation stackFrameLocation(const SStoppedStackFrame& stack_frame) {
@@ -1346,20 +1327,20 @@ int main(int argc, char** argv) {
     refreshAllPanes();
 
     auto renderer = Renderer([&] {
-        const std::string current_status  = transient_status_message.empty() ? base_session_status : transient_status_message;
-        const std::string stopped_at      = formatStoppedLocation(stopped_context.location);
-        Element           locals          = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
-        Element           threads         = renderSelectablePane(threads_pane, focused_pane == eFocusPane::THREADS, app_theme);
-        Element           stack           = renderSelectablePane(stack_pane, focused_pane == eFocusPane::STACK, app_theme);
-        Element           watch_list      = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
-        Element           breakpoints     = renderSelectablePane(breakpoints_pane, focused_pane == eFocusPane::BREAKPOINTS, app_theme);
-        Element           auxiliary_views = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme, memory_context);
-        Element           left_column     = vbox({
+        const std::string current_status         = transient_status_message.empty() ? base_session_status : transient_status_message;
+        const std::string stopped_context_status = formatStoppedContextStatus(stopped_context, debug_selection);
+        Element           locals                 = renderSelectablePane(locals_pane, focused_pane == eFocusPane::LOCALS, app_theme);
+        Element           threads                = renderSelectablePane(threads_pane, focused_pane == eFocusPane::THREADS, app_theme);
+        Element           stack                  = renderSelectablePane(stack_pane, focused_pane == eFocusPane::STACK, app_theme);
+        Element           watch_list             = renderSelectablePane(watch_list_pane, focused_pane == eFocusPane::WATCH_LIST, app_theme);
+        Element           breakpoints            = renderSelectablePane(breakpoints_pane, focused_pane == eFocusPane::BREAKPOINTS, app_theme);
+        Element           auxiliary_views        = renderAuxiliaryViews(view_visibility, memory_view_pane, disassembly_pane, focused_pane, app_theme, memory_context);
+        Element           left_column            = vbox({
             locals | flex,
             threads | size(HEIGHT, EQUAL, 6),
             stack | size(HEIGHT, EQUAL, 8),
         });
-        Element           right_column    = vbox({
+        Element           right_column           = vbox({
             watch_list | flex,
             breakpoints | size(HEIGHT, EQUAL, 8),
         });
@@ -1368,8 +1349,10 @@ int main(int argc, char** argv) {
             text(" Roundtable ") | bgcolor(app_theme.selected_background) | color(app_theme.selected_foreground),
             separator(),
             text(" " + current_status + " ") | color(app_theme.chrome),
-            separator(),
-            text(stopped_at.empty() ? " location n/a " : stopped_at) | color(app_theme.chrome),
+        };
+
+        Elements frame_status_items = {
+            text(" " + stopped_context_status + " ") | color(app_theme.chrome),
         };
 
         Elements command_status_items = {
@@ -1379,6 +1362,8 @@ int main(int argc, char** argv) {
 
         Element status_bar = vbox({
                                  hbox(runtime_status_items),
+                                 separator(),
+                                 hbox(frame_status_items),
                                  separator(),
                                  hbox(command_status_items),
                              }) |
