@@ -566,47 +566,46 @@ std::size_t themePresetIndex(eThemePreset preset) {
 ftxui::Element renderRoundtableLayout(const SAppLayoutState& state) {
     using namespace ftxui;
 
-    Element  locals          = renderSelectablePane(state.locals_pane, state.focused_pane == eFocusPane::LOCALS, state.theme);
-    Element  threads         = renderSelectablePane(state.threads_pane, state.focused_pane == eFocusPane::THREADS, state.theme);
-    Element  stack           = renderSelectablePane(state.stack_pane, state.focused_pane == eFocusPane::STACK, state.theme);
-    Element  watch_list      = renderSelectablePane(state.watch_list_pane, state.focused_pane == eFocusPane::WATCH_LIST, state.theme);
-    Element  breakpoints     = renderSelectablePane(state.breakpoints_pane, state.focused_pane == eFocusPane::BREAKPOINTS, state.theme);
-    Element  auxiliary_views = renderAuxiliaryViews(state.view_visibility, state.memory_view_pane, state.disassembly_pane, state.focused_pane, state.theme, state.memory_context);
-    Element  left_column     = vbox({
+    Element locals          = renderSelectablePane(state.locals_pane, state.focused_pane == eFocusPane::LOCALS, state.theme);
+    Element threads         = renderSelectablePane(state.threads_pane, state.focused_pane == eFocusPane::THREADS, state.theme);
+    Element stack           = renderSelectablePane(state.stack_pane, state.focused_pane == eFocusPane::STACK, state.theme);
+    Element watch_list      = renderSelectablePane(state.watch_list_pane, state.focused_pane == eFocusPane::WATCH_LIST, state.theme);
+    Element breakpoints     = renderSelectablePane(state.breakpoints_pane, state.focused_pane == eFocusPane::BREAKPOINTS, state.theme);
+    Element auxiliary_views = renderAuxiliaryViews(state.view_visibility, state.memory_view_pane, state.disassembly_pane, state.focused_pane, state.theme, state.memory_context);
+    Element left_column     = vbox({
         locals | flex,
         threads | size(HEIGHT, EQUAL, 6),
         stack | size(HEIGHT, EQUAL, 8),
     });
-    Element  right_column    = vbox({
+    Element right_column    = vbox({
         watch_list | flex,
         breakpoints | size(HEIGHT, EQUAL, 8),
     });
 
-    Elements runtime_status_items = {
-        text(" Roundtable ") | bgcolor(state.theme.selected_background) | color(state.theme.selected_foreground),
-        separator(),
-        text(" " + state.current_status + " ") | color(state.theme.chrome),
-    };
+    Element location_bar = hbox({
+                               text(" Location ") | bgcolor(state.theme.selected_background) | color(state.theme.selected_foreground),
+                               separator(),
+                               text(" " + formatStoppedContextStatus(state.stopped_context, state.debug_selection) + " ") | color(state.theme.chrome),
+                           }) |
+        border | color(state.theme.chrome);
 
-    Elements frame_status_items = {
-        text(" " + formatStoppedContextStatus(state.stopped_context, state.debug_selection) + " ") | color(state.theme.chrome),
-    };
-
-    Elements command_status_items = {
-        text(" Tab cycle ") | color(state.theme.chrome),      separator(), text(" r refresh ") | color(state.theme.chrome), separator(),
-        text(" Space commands ") | color(state.theme.accent), separator(), text(" q quit ") | color(state.theme.chrome),
-    };
-
-    Element status_bar = vbox({
-                             hbox(runtime_status_items),
+    Element status_bar = hbox({
+                             text(" Roundtable ") | bgcolor(state.theme.selected_background) | color(state.theme.selected_foreground),
                              separator(),
-                             hbox(frame_status_items),
+                             text(" " + state.current_status + " ") | color(state.theme.chrome) | flex,
                              separator(),
-                             hbox(command_status_items),
+                             text(" Tab ") | color(state.theme.chrome),
+                             separator(),
+                             text(" r ") | color(state.theme.chrome),
+                             separator(),
+                             text(" Space ") | color(state.theme.accent),
+                             separator(),
+                             text(" q ") | color(state.theme.chrome),
                          }) |
         border | color(state.theme.chrome);
 
     Element content = vbox({
+        location_bar,
         hbox({
             left_column | size(WIDTH, EQUAL, 28),
             auxiliary_views | flex,
