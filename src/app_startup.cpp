@@ -2,6 +2,10 @@
 
 #include <ostream>
 
+#ifndef ROUNDTABLE_VERSION
+#define ROUNDTABLE_VERSION "0.1.0"
+#endif
+
 void printUsage(std::ostream& output) {
     output << "Usage: roundtable [--config path] [program-path]\n";
     output << "  roundtable                         Start with roundtable.toml, user config, or defaults\n";
@@ -9,6 +13,7 @@ void printUsage(std::ostream& output) {
     output << "  roundtable --profile tests         Use [profiles.tests] from config\n";
     output << "  roundtable --init-config           Create a user config file if missing\n";
     output << "  roundtable --init-config --force   Overwrite the user config file\n";
+    output << "  roundtable --version               Print version and exit\n";
     output << "  roundtable ./mybinary              Force dap_launch for the given binary\n";
 }
 
@@ -23,6 +28,12 @@ SAppStartupResult initializeAppStartup(int argc, char** argv, std::ostream& outp
 
     if (result.cli_options.show_help) {
         printUsage(output);
+        result.should_exit = true;
+        return result;
+    }
+
+    if (result.cli_options.show_version) {
+        output << "roundtable " << ROUNDTABLE_VERSION << '\n';
         result.should_exit = true;
         return result;
     }

@@ -7,6 +7,7 @@
 
 struct SCliOptions {
     bool                                 show_help            = false;
+    bool                                 show_version         = false;
     bool                                 init_config          = false;
     bool                                 force_init_config    = false;
     bool                                 config_path_explicit = false;

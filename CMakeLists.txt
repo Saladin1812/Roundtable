@@ -81,6 +81,9 @@ target_compile_options(roundtable_dap_sample PRIVATE
 target_include_directories(roundtable PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+target_compile_definitions(roundtable PRIVATE
+  ROUNDTABLE_VERSION="${PROJECT_VERSION}"
+)
 target_include_directories(roundtable_dap_probe PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )

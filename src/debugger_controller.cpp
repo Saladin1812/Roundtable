@@ -220,13 +220,21 @@ SSessionBootstrapResult bootstrapSession(SAppConfig& app_config) {
                                                           });
 
     if (resolved_command.empty() || resolved_liblldb_path.empty() || app_config.dap_launch.program.empty()) {
+        std::string status_message = "DAP launch config incomplete.";
+        if (app_config.dap_launch.program.empty()) {
+            status_message += " Set [dap_launch].program or run: roundtable ./path/to/binary.";
+        }
+        if (resolved_command.empty() || resolved_liblldb_path.empty()) {
+            status_message += " CodeLLDB was not auto-detected; install CodeLLDB via Mason/VS Code or set [dap_launch].command and [dap_launch].liblldb_path.";
+        }
+
         return {
             .session                      = std::move(dap_session),
             .selection                    = {},
             .disassembly_start_address    = 0x401000,
             .disassembly_memory_reference = "",
             .stopped_context              = {},
-            .status_message               = "DAP launch config is incomplete and autodetect failed",
+            .status_message               = std::move(status_message),
             .state                        = eDebuggerSessionState::ERROR,
         };
     }

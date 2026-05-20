@@ -12,6 +12,11 @@ SCliOptions parseCliOptions(int argc, char** argv) {
             continue;
         }
 
+        if (argument == "--version" || argument == "-V") {
+            options.show_version = true;
+            continue;
+        }
+
         if (argument == "--init-config") {
             options.init_config = true;
             continue;

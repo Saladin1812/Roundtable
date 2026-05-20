@@ -39,8 +39,9 @@ preset = "default"
 # selected_memory_highlight_ascii_background = "#55ff55"
 
 [dap_launch]
-command = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/adapter/codelldb"
-liblldb_path = "/home/saladin/.local/share/nvim/mason/packages/codelldb/extension/lldb/lib/liblldb.so"
+# Leave command/liblldb_path empty to use CodeLLDB auto-detection.
+command = ""
+liblldb_path = ""
 program = "./build/roundtable_dap_sample"
 arguments = []
 working_directory = "."
@@ -82,9 +83,7 @@ entries = [
 
 [codelldb.auto_detect]
 enabled = true
-candidate_roots = [
-  "/custom/codelldb/extension",
-]
+candidate_roots = []
 
 [keybindings]
 focus_locals = "Space l"

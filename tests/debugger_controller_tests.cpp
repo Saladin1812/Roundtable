@@ -106,3 +106,17 @@ TEST_CASE("updateDapStoppedContext preserves the selected thread when it is stil
     REQUIRE(stopped_context.stack_frames.size() == 1);
     CHECK(stopped_context.stack_frames[0].function_name == "worker_loop");
 }
+
+TEST_CASE("bootstrapSession reports actionable DAP launch configuration guidance") {
+    SAppConfig app_config                   = {};
+    app_config.session_mode                 = eSessionMode::DAP_LAUNCH;
+    app_config.codelldb_auto_detect.enabled = false;
+
+    const SSessionBootstrapResult result = bootstrapSession(app_config);
+
+    CHECK(result.state == eDebuggerSessionState::ERROR);
+    CHECK(result.status_message.find("DAP launch config incomplete") != std::string::npos);
+    CHECK(result.status_message.find("[dap_launch].program") != std::string::npos);
+    CHECK(result.status_message.find("[dap_launch].command") != std::string::npos);
+    CHECK(result.status_message.find("[dap_launch].liblldb_path") != std::string::npos);
+}
