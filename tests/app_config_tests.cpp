@@ -38,7 +38,7 @@ namespace {
 TEST_CASE("loadAppConfig returns defaults when config file is missing") {
     const SAppConfig config = loadAppConfig("/tmp/roundtable-missing-config.toml");
 
-    CHECK(config.session_mode == eSessionMode::MOCK);
+    CHECK(config.session_mode == eSessionMode::DAP_LAUNCH);
     CHECK(config.startup_focus == eFocusPane::MEMORY_VIEW);
     CHECK(config.show_memory_view);
     CHECK_FALSE(config.show_disassembly_view);

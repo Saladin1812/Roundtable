@@ -53,7 +53,7 @@ struct SCodeLldbAutoDetectConfig {
 };
 
 struct SAppConfig {
-    eSessionMode                         session_mode          = eSessionMode::MOCK;
+    eSessionMode                         session_mode          = eSessionMode::DAP_LAUNCH;
     eFocusPane                           startup_focus         = eFocusPane::MEMORY_VIEW;
     bool                                 show_memory_view      = true;
     bool                                 show_disassembly_view = false;

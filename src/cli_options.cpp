@@ -22,6 +22,11 @@ SCliOptions parseCliOptions(int argc, char** argv) {
             continue;
         }
 
+        if (argument == "--mock") {
+            options.force_mock = true;
+            continue;
+        }
+
         if (argument == "--force") {
             options.force_init_config = true;
             continue;
@@ -69,6 +74,10 @@ void applyCliOverrides(const SCliOptions& cli_options, SAppConfig& app_config) {
     if (cli_options.profile.has_value()) {
         app_config.active_profile = cli_options.profile.value();
         applyLaunchProfile(app_config, cli_options.profile.value());
+    }
+
+    if (cli_options.force_mock) {
+        app_config.session_mode = eSessionMode::MOCK;
     }
 
     if (!cli_options.launch_program.has_value()) {

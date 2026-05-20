@@ -13,6 +13,7 @@ void printUsage(std::ostream& output) {
     output << "  roundtable --profile tests         Use [profiles.tests] from config\n";
     output << "  roundtable --init-config           Create a user config file if missing\n";
     output << "  roundtable --init-config --force   Overwrite the user config file\n";
+    output << "  roundtable --mock                  Start the built-in mock session for UI testing\n";
     output << "  roundtable --version               Print version and exit\n";
     output << "  roundtable ./mybinary              Force dap_launch for the given binary\n";
 }

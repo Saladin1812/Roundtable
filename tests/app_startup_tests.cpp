@@ -18,7 +18,20 @@ TEST_CASE("initializeAppStartup prints usage and exits for help") {
     CHECK(result.exit_code == 0);
     CHECK(output.str().find("Usage: roundtable") != std::string::npos);
     CHECK(output.str().find("--init-config") != std::string::npos);
+    CHECK(output.str().find("--mock") != std::string::npos);
     CHECK(output.str().find("--version") != std::string::npos);
+}
+
+TEST_CASE("initializeAppStartup applies mock override") {
+    char               arg0[] = "roundtable";
+    char               arg1[] = "--mock";
+    char*              argv[] = {arg0, arg1};
+
+    std::ostringstream output;
+    const auto         result = initializeAppStartup(2, argv, output);
+
+    CHECK_FALSE(result.should_exit);
+    CHECK(result.app_config.session_mode == eSessionMode::MOCK);
 }
 
 TEST_CASE("initializeAppStartup prints version and exits") {

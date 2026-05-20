@@ -10,6 +10,7 @@ struct SCliOptions {
     bool                                 show_version         = false;
     bool                                 init_config          = false;
     bool                                 force_init_config    = false;
+    bool                                 force_mock           = false;
     bool                                 config_path_explicit = false;
     std::filesystem::path                config_path          = "roundtable.toml";
     std::optional<std::string>           profile;

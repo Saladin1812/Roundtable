@@ -49,6 +49,17 @@ TEST_CASE("parseCliOptions reads init config flags") {
     CHECK_FALSE(options.launch_program.has_value());
 }
 
+TEST_CASE("parseCliOptions reads mock flag") {
+    char       arg0[] = "roundtable";
+    char       arg1[] = "--mock";
+    char*      argv[] = {arg0, arg1};
+
+    const auto options = parseCliOptions(2, argv);
+
+    CHECK(options.force_mock);
+    CHECK_FALSE(options.launch_program.has_value());
+}
+
 TEST_CASE("parseCliOptions reads config path and launch program") {
     char       arg0[] = "roundtable";
     char       arg1[] = "--config=/tmp/roundtable-generated.toml";
@@ -76,10 +87,15 @@ TEST_CASE("parseCliOptions reads profile") {
 TEST_CASE("applyCliOverrides switches app config to dap_launch") {
     SAppConfig  app_config = {};
     SCliOptions options    = {
-           .show_help      = false,
-           .config_path    = "roundtable.toml",
-           .profile        = std::nullopt,
-           .launch_program = std::filesystem::path("/tmp/hello-world"),
+           .show_help            = false,
+           .show_version         = false,
+           .init_config          = false,
+           .force_init_config    = false,
+           .force_mock           = false,
+           .config_path_explicit = false,
+           .config_path          = "roundtable.toml",
+           .profile              = std::nullopt,
+           .launch_program       = std::filesystem::path("/tmp/hello-world"),
     };
 
     applyCliOverrides(options, app_config);
@@ -88,6 +104,25 @@ TEST_CASE("applyCliOverrides switches app config to dap_launch") {
     CHECK(app_config.dap_launch.program == std::filesystem::path("/tmp/hello-world").string());
     CHECK(app_config.dap_launch.continue_once);
     CHECK(app_config.dap_launch.working_directory == std::filesystem::path("/tmp").string());
+}
+
+TEST_CASE("applyCliOverrides switches app config to mock") {
+    SAppConfig  app_config = {.session_mode = eSessionMode::DAP_LAUNCH};
+    SCliOptions options    = {
+           .show_help            = false,
+           .show_version         = false,
+           .init_config          = false,
+           .force_init_config    = false,
+           .force_mock           = true,
+           .config_path_explicit = false,
+           .config_path          = "roundtable.toml",
+           .profile              = std::nullopt,
+           .launch_program       = std::nullopt,
+    };
+
+    applyCliOverrides(options, app_config);
+
+    CHECK(app_config.session_mode == eSessionMode::MOCK);
 }
 
 TEST_CASE("applyCliOverrides applies selected launch profile") {
@@ -119,10 +154,15 @@ TEST_CASE("applyCliOverrides applies selected launch profile") {
             },
     };
     SCliOptions options = {
-        .show_help      = false,
-        .config_path    = "roundtable.toml",
-        .profile        = "tests",
-        .launch_program = std::nullopt,
+        .show_help            = false,
+        .show_version         = false,
+        .init_config          = false,
+        .force_init_config    = false,
+        .force_mock           = false,
+        .config_path_explicit = false,
+        .config_path          = "roundtable.toml",
+        .profile              = "tests",
+        .launch_program       = std::nullopt,
     };
 
     applyCliOverrides(options, app_config);
