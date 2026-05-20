@@ -1,10 +1,13 @@
 #include <array>
 #include <algorithm>
 #include <atomic>
+#include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <thread>
 #include <utility>
@@ -209,6 +212,129 @@ namespace {
         return keybinding_iterator->command;
     }
 
+    std::string lowercaseCopy(std::string text) {
+        std::ranges::transform(text, text.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        return text;
+    }
+
+    bool selectProfileBySearch(SProfilePickerState& profile_picker_state, const std::vector<SLaunchProfileConfig>& profiles) {
+        if (profile_picker_state.search_query.empty()) {
+            return false;
+        }
+
+        const auto search_query = lowercaseCopy(profile_picker_state.search_query);
+        for (std::size_t index = 0; index < profiles.size(); ++index) {
+            if (lowercaseCopy(profiles[index].name).starts_with(search_query)) {
+                profile_picker_state.selected_index = index;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool shouldShowStartupDashboard(const SCliOptions& cli_options, const SAppConfig& app_config) {
+        return !cli_options.force_mock && !cli_options.config_path_explicit && !cli_options.profile.has_value() && !cli_options.launch_program.has_value() &&
+            app_config.session_mode == eSessionMode::DAP_LAUNCH && app_config.dap_launch.program.empty();
+    }
+
+    std::string dashboardConfigPathLabel(const SCliOptions& cli_options) {
+        if (!cli_options.config_path_explicit) {
+            if (const auto default_path = findDefaultAppConfigPath(); default_path.has_value()) {
+                return std::filesystem::absolute(default_path.value()).string();
+            }
+        }
+
+        return std::filesystem::absolute(cli_options.config_path).string();
+    }
+
+    std::filesystem::path expandHomeDirectory(const std::string& text) {
+        if (text == "~" || text.starts_with("~/")) {
+            if (const char* home = std::getenv("HOME"); home != nullptr) {
+                if (text.size() == 1) {
+                    return std::filesystem::path(home);
+                }
+                return std::filesystem::path(home) / text.substr(2);
+            }
+        }
+
+        return std::filesystem::path(text);
+    }
+
+    std::string unexpandHomeDirectory(const std::filesystem::path& path, const std::string& original_text) {
+        if (!original_text.starts_with("~")) {
+            return path.string();
+        }
+
+        if (const char* home = std::getenv("HOME"); home != nullptr) {
+            const auto home_path   = std::filesystem::path(home).lexically_normal().string();
+            const auto target_path = path.lexically_normal().string();
+            const bool exact_home  = target_path == home_path;
+            const bool inside_home = target_path.starts_with(home_path + std::string{"/"});
+            if (exact_home) {
+                return "~";
+            }
+            if (inside_home) {
+                return "~/" + target_path.substr(home_path.size() + 1);
+            }
+        }
+
+        return path.string();
+    }
+
+    std::optional<std::string> completePathInput(const std::string& input) {
+        const std::string effective_input = input.empty() ? "." : input;
+        const auto        expanded_input  = expandHomeDirectory(effective_input);
+        const bool        input_is_dir    = std::filesystem::is_directory(expanded_input);
+        const bool        ends_with_sep   = !effective_input.empty() && (effective_input.back() == '/' || effective_input.back() == '\\');
+        const auto        directory       = input_is_dir && ends_with_sep ? expanded_input : expanded_input.parent_path();
+        const auto        prefix          = input_is_dir && ends_with_sep ? std::string{} : expanded_input.filename().string();
+        const auto        scan_directory  = directory.empty() ? std::filesystem::path(".") : directory;
+
+        std::error_code   error_code;
+        if (!std::filesystem::exists(scan_directory, error_code) || error_code) {
+            return std::nullopt;
+        }
+
+        std::vector<std::filesystem::path> matches;
+        for (const auto& entry : std::filesystem::directory_iterator(scan_directory, error_code)) {
+            if (error_code) {
+                return std::nullopt;
+            }
+
+            const auto filename = entry.path().filename().string();
+            if (filename.starts_with(prefix)) {
+                matches.push_back(entry.path());
+            }
+        }
+
+        if (matches.empty()) {
+            return std::nullopt;
+        }
+
+        std::ranges::sort(matches);
+        auto completed_path = matches.front();
+        if (matches.size() > 1) {
+            std::string common_prefix = matches.front().filename().string();
+            for (const auto& match : matches | std::views::drop(1)) {
+                const auto  filename    = match.filename().string();
+                std::size_t common_size = 0;
+                while (common_size < common_prefix.size() && common_size < filename.size() && common_prefix[common_size] == filename[common_size]) {
+                    ++common_size;
+                }
+                common_prefix.resize(common_size);
+            }
+
+            completed_path = scan_directory / common_prefix;
+        }
+
+        if (std::filesystem::is_directory(completed_path, error_code) && !error_code) {
+            completed_path /= "";
+        }
+
+        return unexpandHomeDirectory(completed_path, effective_input);
+    }
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -221,11 +347,23 @@ int main(int argc, char** argv) {
 
     const SCliOptions              cli_options                  = startup_result.cli_options;
     const std::string              config_path                  = startup_result.config_path;
+    std::string                    display_config_path          = dashboardConfigPathLabel(cli_options);
     SAppConfig                     app_config                   = startup_result.app_config;
     const auto                     buildActiveTheme             = [&](eThemePreset preset) { return applyThemeOverrides(buildTheme(preset), app_config.theme_overrides); };
     eThemePreset                   active_theme_preset          = app_config.theme_preset;
     SAppTheme                      app_theme                    = buildActiveTheme(active_theme_preset);
-    SSessionBootstrapResult        bootstrap_result             = bootstrapSession(app_config);
+    bool                           dashboard_active             = shouldShowStartupDashboard(cli_options, app_config);
+    SSessionBootstrapResult        bootstrap_result             = dashboard_active ?
+                           SSessionBootstrapResult{
+                               .session                      = nullptr,
+                               .selection                    = {},
+                               .disassembly_start_address    = 0x401000,
+                               .disassembly_memory_reference = "",
+                               .stopped_context              = {},
+                               .status_message               = "Choose a launch action",
+                               .state                        = eDebuggerSessionState::TERMINATED,
+        } :
+                           bootstrapSession(app_config);
     std::unique_ptr<IDebugSession> debug_session                = std::move(bootstrap_result.session);
     SDebugSelection                debug_selection              = bootstrap_result.selection;
     std::uint64_t                  disassembly_start_address    = bootstrap_result.disassembly_start_address;
@@ -260,10 +398,7 @@ int main(int argc, char** argv) {
             };
         }
 
-        return std::vector<SWatchExpression>{
-            {.expression = "sample_value"},
-            {.expression = "sample_bytes"},
-        };
+        return std::vector<SWatchExpression>{};
     };
     std::vector<SWatchExpression> watch_expressions    = buildInitialWatchExpressions(app_config);
     std::string                   manual_memory_target = {};
@@ -334,6 +469,9 @@ int main(int argc, char** argv) {
     const auto isSessionTerminated = [&] { return session_state == eDebuggerSessionState::TERMINATED; };
 
     const auto refreshAllPanes = [&] {
+        if (dashboard_active || debug_session == nullptr) {
+            return;
+        }
         if (isDapControlRunning()) {
             return;
         }
@@ -386,6 +524,24 @@ int main(int argc, char** argv) {
         base_session_status          = bootstrap_result.status_message;
         transient_status_message     = std::move(status_message);
         memory_navigation_offset     = 0;
+    };
+
+    const auto launchProgram = [&](const std::filesystem::path& program_path) {
+        if (program_path.empty()) {
+            transient_status_message = "Enter a program path to launch";
+            return;
+        }
+
+        const auto absolute_program_path        = std::filesystem::absolute(program_path);
+        app_config.session_mode                 = eSessionMode::DAP_LAUNCH;
+        app_config.dap_launch.program           = absolute_program_path.string();
+        app_config.dap_launch.continue_once     = true;
+        app_config.dap_launch.working_directory = absolute_program_path.has_parent_path() ? absolute_program_path.parent_path().string() : std::filesystem::current_path().string();
+        dashboard_active                        = false;
+        watch_expressions                       = buildInitialWatchExpressions(app_config);
+        memory_navigation_offset                = 0;
+        applyBootstrapResult(bootstrapSession(app_config), "Launching " + absolute_program_path.filename().string());
+        refreshAllPanes();
     };
 
     const auto clearBreakpointSourceInActiveSession = [&](const std::filesystem::path& source_path) {
@@ -546,8 +702,9 @@ int main(int argc, char** argv) {
         SAppConfig       reloaded_config      = reload_config_result.config;
         applyCliOverrides(cli_options, reloaded_config);
 
-        app_config  = std::move(reloaded_config);
-        keybindings = app_config.keybindings;
+        app_config          = std::move(reloaded_config);
+        keybindings         = app_config.keybindings;
+        display_config_path = dashboardConfigPathLabel(cli_options);
         if (!app_config.watches.empty() || session_state != eDebuggerSessionState::STOPPED) {
             watch_expressions = buildInitialWatchExpressions(app_config);
         }
@@ -564,7 +721,16 @@ int main(int argc, char** argv) {
         };
         profile_picker_state = {};
 
-        if (session_state == eDebuggerSessionState::STOPPED) {
+        dashboard_active = shouldShowStartupDashboard(cli_options, app_config);
+        if (dashboard_active) {
+            debug_session            = nullptr;
+            debug_selection          = {};
+            stopped_context          = {};
+            session_state            = eDebuggerSessionState::TERMINATED;
+            base_session_status      = "Choose a launch action";
+            transient_status_message = "Config reloaded";
+            memory_navigation_offset = 0;
+        } else if (session_state == eDebuggerSessionState::STOPPED) {
             applyBreakpointsToActiveSession();
             for (const auto& previous_breakpoint : previous_config.breakpoints) {
                 if (!hasBreakpointForSource(previous_breakpoint.source_path)) {
@@ -888,6 +1054,7 @@ int main(int argc, char** argv) {
             .prompt_state         = prompt_state,
             .theme_picker_state   = theme_picker_state,
             .profile_picker_state = profile_picker_state,
+            .dashboard_state      = {.active = dashboard_active, .config_path = display_config_path, .launch_profile_count = app_config.launch_profiles.size()},
             .focused_pane         = focused_pane,
             .current_status       = transient_status_message.empty() ? base_session_status : transient_status_message,
             .leader_pending       = leader_pending,
@@ -930,10 +1097,23 @@ int main(int argc, char** argv) {
                     manual_memory_target     = prompt_state.input;
                     focused_pane             = eFocusPane::MEMORY_VIEW;
                     memory_navigation_offset = 0;
+                } else if (prompt_state.mode == ePromptMode::LAUNCH_PROGRAM) {
+                    launchProgram(prompt_state.input);
                 }
 
                 prompt_state = {};
-                refreshAllPanes();
+                if (!dashboard_active) {
+                    refreshAllPanes();
+                }
+                return true;
+            }
+
+            if (event == Event::Tab && prompt_state.mode == ePromptMode::LAUNCH_PROGRAM) {
+                if (const auto completed_path = completePathInput(prompt_state.input); completed_path.has_value()) {
+                    prompt_state.input            = completed_path.value();
+                    prompt_state.cursor_index     = prompt_state.input.size();
+                    prompt_state.replace_on_input = false;
+                }
                 return true;
             }
 
@@ -1060,6 +1240,7 @@ int main(int argc, char** argv) {
                     return true;
                 }
 
+                dashboard_active = false;
                 restartSession();
                 return true;
             }
@@ -1069,8 +1250,24 @@ int main(int argc, char** argv) {
 
             if (move_up && profile_picker_state.selected_index > 0) {
                 --profile_picker_state.selected_index;
+                profile_picker_state.replace_on_input = true;
             } else if (move_down && profile_picker_state.selected_index + 1 < app_config.launch_profiles.size()) {
                 ++profile_picker_state.selected_index;
+                profile_picker_state.replace_on_input = true;
+            } else if (event == Event::Backspace) {
+                if (!profile_picker_state.search_query.empty()) {
+                    profile_picker_state.search_query.pop_back();
+                    selectProfileBySearch(profile_picker_state, app_config.launch_profiles);
+                }
+                profile_picker_state.replace_on_input = false;
+            } else if (event.is_character()) {
+                if (profile_picker_state.replace_on_input) {
+                    profile_picker_state.search_query = event.character();
+                } else {
+                    profile_picker_state.search_query += event.character();
+                }
+                profile_picker_state.replace_on_input = false;
+                selectProfileBySearch(profile_picker_state, app_config.launch_profiles);
             } else if (!(move_up || move_down)) {
                 return true;
             }
@@ -1133,6 +1330,60 @@ int main(int argc, char** argv) {
             if (handled) {
                 refreshAllPanes();
             }
+            return true;
+        }
+
+        if (dashboard_active) {
+            if (view_visibility.show_shortcuts_overlay && (event == Event::Escape || event == Event::Character('?'))) {
+                view_visibility.show_shortcuts_overlay = false;
+                return true;
+            }
+
+            if (event == Event::Character('q')) {
+                screen.Exit();
+                return true;
+            }
+
+            if (event == Event::Character('b')) {
+                prompt_state = beginPrompt(ePromptMode::LAUNCH_PROGRAM, std::filesystem::current_path().string() + "/", true);
+                return true;
+            }
+
+            if (event == Event::Character('p')) {
+                if (app_config.launch_profiles.empty()) {
+                    transient_status_message = "No launch profiles configured";
+                    return true;
+                }
+
+                profile_picker_state = {
+                    .active           = true,
+                    .selected_index   = launchProfileIndex(app_config.launch_profiles, app_config.active_profile),
+                    .search_query     = {},
+                    .replace_on_input = true,
+                };
+                transient_status_message = "Profile: " + app_config.launch_profiles[profile_picker_state.selected_index].name;
+                return true;
+            }
+
+            if (event == Event::Character('i')) {
+                const auto init_result = initializeUserAppConfig(false);
+                if (init_result.ok) {
+                    display_config_path = std::filesystem::absolute(init_result.path).string();
+                }
+                transient_status_message = init_result.message;
+                return true;
+            }
+
+            if (event == Event::Character('r')) {
+                reloadConfig();
+                return true;
+            }
+
+            if (event == Event::Character('?')) {
+                view_visibility.show_shortcuts_overlay = !view_visibility.show_shortcuts_overlay;
+                return true;
+            }
+
             return true;
         }
 
@@ -1286,8 +1537,10 @@ int main(int argc, char** argv) {
                             return true;
                         }
                         profile_picker_state = {
-                            .active         = true,
-                            .selected_index = launchProfileIndex(app_config.launch_profiles, app_config.active_profile),
+                            .active           = true,
+                            .selected_index   = launchProfileIndex(app_config.launch_profiles, app_config.active_profile),
+                            .search_query     = {},
+                            .replace_on_input = true,
                         };
                         transient_status_message = "Profile: " + app_config.launch_profiles[profile_picker_state.selected_index].name;
                         return true;

@@ -22,6 +22,7 @@ enum class ePromptMode : std::uint8_t {
     EDIT_WATCH,
     ADD_BREAKPOINT,
     MEMORY_TARGET,
+    LAUNCH_PROGRAM,
 };
 
 struct SPromptState {
@@ -40,6 +41,14 @@ struct SThemePickerState {
 struct SProfilePickerState {
     bool        active         = false;
     std::size_t selected_index = 0;
+    std::string search_query;
+    bool        replace_on_input = true;
+};
+
+struct SDashboardState {
+    bool        active = false;
+    std::string config_path;
+    std::size_t launch_profile_count = 0;
 };
 
 struct SAppLayoutState {
@@ -60,6 +69,7 @@ struct SAppLayoutState {
     const SPromptState&                      prompt_state;
     const SThemePickerState&                 theme_picker_state;
     const SProfilePickerState&               profile_picker_state;
+    const SDashboardState&                   dashboard_state;
     eFocusPane                               focused_pane = eFocusPane::MEMORY_VIEW;
     std::string                              current_status;
     bool                                     leader_pending = false;

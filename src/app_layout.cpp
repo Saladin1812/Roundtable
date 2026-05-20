@@ -399,16 +399,61 @@ namespace {
                 title = " Memory Target ";
                 hint  = "Enter address or expression, empty clears override";
                 break;
+            case ePromptMode::LAUNCH_PROGRAM:
+                title = " Launch Binary ";
+                hint  = "Enter a program path and press Return";
+                break;
             case ePromptMode::NONE: return text("") | color(theme.chrome);
         }
 
-        return window(text(title) | color(theme.title),
-                      vbox({
-                          text(hint) | color(theme.chrome),
-                          separator(),
-                          text(buildPromptDisplay(prompt_state)) | color(theme.accent),
-                      })) |
-            size(WIDTH, GREATER_THAN, 48) | color(theme.overlay_border);
+        return clear_under(window(text(title) | color(theme.title),
+                                  vbox({
+                                      text(hint) | color(theme.chrome),
+                                      separator(),
+                                      hbox({
+                                          text(buildPromptDisplay(prompt_state)) | color(theme.accent),
+                                          filler(),
+                                      }),
+                                  })) |
+                           size(WIDTH, GREATER_THAN, 48) | color(theme.overlay_border));
+    }
+
+    ftxui::Element renderDashboard(const SDashboardState& dashboard_state, const SAppTheme& theme, const std::string& current_status) {
+        using namespace ftxui;
+
+        Elements rows = {
+            text(" ____                  _ _        _     _      ") | color(theme.accent),
+            text("|  _ \\ ___  _   _ _ __(_) |_ __ _| |__ | | ___ ") | color(theme.accent),
+            text("| |_) / _ \\| | | | '__| | __/ _` | '_ \\| |/ _ \\") | color(theme.accent),
+            text("|  _ < (_) | |_| | |  | | || (_| | |_) | |  __/") | color(theme.accent),
+            text("|_| \\_\\___/ \\__,_|_|  |_|\\__\\__,_|_.__/|_|\\___|") | color(theme.accent),
+            separator(),
+            text("Editor-agnostic debugging suite in your terminal") | color(theme.title),
+            text("Launch standalone, from Neovim, or from VS Code") | color(theme.chrome),
+            text("Use profiles to switch targets without rewriting config") | color(theme.chrome),
+            text(""),
+            hbox({text("b") | color(theme.hint_key), text("  Launch binary path") | color(theme.hint_description)}),
+            hbox({text("p") | color(theme.hint_key), text("  Pick launch profile") | color(theme.hint_description)}),
+            hbox({text("i") | color(theme.hint_key), text("  Create user config") | color(theme.hint_description)}),
+            hbox({text("?") | color(theme.hint_key), text("  Show shortcuts") | color(theme.hint_description)}),
+            hbox({text("r") | color(theme.hint_key), text("  Reload config") | color(theme.hint_description)}),
+            hbox({text("q") | color(theme.hint_key), text("  Quit") | color(theme.hint_description)}),
+            separator(),
+            text("CLI: roundtable ./mybinary") | color(theme.chrome),
+            text("Config: roundtable --init-config") | color(theme.chrome),
+            text("Neovim: https://github.com/Saladin1812/roundtable.nvim") | color(theme.chrome),
+            text("VS Code extension: planned") | color(theme.chrome),
+            separator(),
+            text("Config path: " + (dashboard_state.config_path.empty() ? std::string{"<default search path>"} : dashboard_state.config_path)) | color(theme.chrome),
+            text("Launch profiles: " + std::to_string(dashboard_state.launch_profile_count)) | color(theme.chrome),
+        };
+
+        if (!current_status.empty()) {
+            rows.push_back(separator());
+            rows.push_back(text(current_status) | color(theme.chrome));
+        }
+
+        return window(text(" Roundtable ") | color(theme.title), vbox(rows)) | size(WIDTH, GREATER_THAN, 58) | color(theme.overlay_border);
     }
 
     ftxui::Element renderThemePickerOverlay(const SThemePickerState& theme_picker_state, const SAppTheme& theme) {
@@ -439,10 +484,15 @@ namespace {
         using namespace ftxui;
 
         Elements rows = {
-            text("j/k or arrows to select") | color(theme.chrome),
+            text("j/k, arrows, or type to select") | color(theme.chrome),
             text("Return restart  Esc cancel") | color(theme.chrome),
             separator(),
         };
+
+        if (!profile_picker_state.search_query.empty()) {
+            rows.push_back(text("Search: " + profile_picker_state.search_query) | color(theme.accent));
+            rows.push_back(separator());
+        }
 
         for (std::size_t index = 0; index < profiles.size(); ++index) {
             Element row = hbox({
@@ -565,6 +615,33 @@ std::size_t themePresetIndex(eThemePreset preset) {
 
 ftxui::Element renderRoundtableLayout(const SAppLayoutState& state) {
     using namespace ftxui;
+
+    if (state.dashboard_state.active) {
+        Element content = renderDashboard(state.dashboard_state, state.theme, state.current_status) | center;
+
+        if (state.view_visibility.show_shortcuts_overlay) {
+            content = dbox({
+                content,
+                renderShortcutsOverlay(state.keybindings, state.theme) | center,
+            });
+        }
+
+        if (state.profile_picker_state.active) {
+            content = dbox({
+                content,
+                renderProfilePickerOverlay(state.profile_picker_state, state.launch_profiles, state.theme) | center,
+            });
+        }
+
+        if (state.prompt_state.mode != ePromptMode::NONE) {
+            content = dbox({
+                content,
+                renderPromptOverlay(state.prompt_state, state.theme) | center,
+            });
+        }
+
+        return content;
+    }
 
     Element locals          = renderSelectablePane(state.locals_pane, state.focused_pane == eFocusPane::LOCALS, state.theme);
     Element threads         = renderSelectablePane(state.threads_pane, state.focused_pane == eFocusPane::THREADS, state.theme);
