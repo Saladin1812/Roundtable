@@ -705,7 +705,7 @@ std::vector<std::filesystem::path> defaultAppConfigSearchPaths() {
         std::filesystem::current_path() / "roundtable.toml",
     };
 
-#if defined(_WIN32)
+#ifdef _WIN32
     if (const auto app_data = envPath("APPDATA"); app_data.has_value()) {
         candidate_paths.emplace_back(app_data.value() / "Roundtable" / "roundtable.toml");
     }
@@ -749,7 +749,7 @@ std::optional<std::filesystem::path> findDefaultAppConfigPath() {
 }
 
 std::filesystem::path defaultUserAppConfigPath() {
-#if defined(_WIN32)
+#ifdef _WIN32
     if (const auto app_data = envPath("APPDATA"); app_data.has_value()) {
         return app_data.value() / "Roundtable" / "roundtable.toml";
     }

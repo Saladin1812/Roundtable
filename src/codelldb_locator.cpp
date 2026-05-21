@@ -17,7 +17,7 @@ namespace {
     }
 
     std::filesystem::path adapterRelativePath() {
-#if defined(_WIN32)
+#ifdef _WIN32
         return std::filesystem::path("adapter") / "codelldb.exe";
 #else
         return std::filesystem::path("adapter") / "codelldb";
@@ -25,7 +25,7 @@ namespace {
     }
 
     std::filesystem::path liblldbRelativePath() {
-#if defined(_WIN32)
+#ifdef _WIN32
         return std::filesystem::path("lldb") / "bin" / "liblldb.dll";
 #elif defined(__APPLE__)
         return std::filesystem::path("lldb") / "lib" / "liblldb.dylib";
@@ -53,7 +53,7 @@ namespace {
     std::vector<std::filesystem::path> platformDefaultRoots() {
         std::vector<std::filesystem::path> roots;
 
-#if defined(_WIN32)
+#ifdef _WIN32
         if (const auto local_app_data = getEnvPath("LOCALAPPDATA"); local_app_data.has_value()) {
             roots.push_back(local_app_data.value() / "nvim-data" / "mason" / "packages" / "codelldb" / "extension");
         }
@@ -108,7 +108,7 @@ namespace {
     }
 
     char pathListSeparator() {
-#if defined(_WIN32)
+#ifdef _WIN32
         return ';';
 #else
         return ':';
@@ -116,7 +116,7 @@ namespace {
     }
 
     std::string adapterExecutableName() {
-#if defined(_WIN32)
+#ifdef _WIN32
         return "codelldb.exe";
 #else
         return "codelldb";

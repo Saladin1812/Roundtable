@@ -174,8 +174,7 @@ TEST_CASE("generateMemoryViewRows returns provider error as a row") {
 TEST_CASE("findFirstHexAddress extracts the first hexadecimal address from text") {
     const auto address = findFirstHexAddress("volatile std::array* = 0x7FFFABCD1234");
 
-    REQUIRE(address.has_value());
-    CHECK(address.value() == 0x7FFFABCD1234ULL);
+    CHECK(address == 0x7FFFABCD1234ULL);
 }
 
 TEST_CASE("buildMemoryReadRequest uses evaluated address for a selected non-pointer local") {

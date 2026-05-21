@@ -263,13 +263,14 @@ SSessionBootstrapResult bootstrapSession(SAppConfig& app_config) {
             .working_directory = app_config.dap_launch.working_directory,
             .stop_on_entry     = app_config.dap_launch.stop_on_entry,
         })) {
+        const auto last_error = dap_session->getLastError();
         return {
             .session                      = std::move(dap_session),
             .selection                    = {},
             .disassembly_start_address    = 0x401000,
             .disassembly_memory_reference = "",
             .stopped_context              = {},
-            .status_message               = "DAP launch failed: " + dap_session->getLastError(),
+            .status_message               = "DAP launch failed: " + last_error,
             .state                        = eDebuggerSessionState::ERROR,
         };
     }

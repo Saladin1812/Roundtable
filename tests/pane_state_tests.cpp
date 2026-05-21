@@ -48,54 +48,30 @@ TEST_CASE("executeCommand toggles views and normalizes focus") {
 }
 
 TEST_CASE("parseCommandName returns commands for known names") {
-    REQUIRE(parseCommandName("focus_memory").has_value());
-    CHECK(parseCommandName("focus_memory").value() == eCommand::FOCUS_MEMORY);
-    REQUIRE(parseCommandName("focus_threads").has_value());
-    CHECK(parseCommandName("focus_threads").value() == eCommand::FOCUS_THREADS);
-    REQUIRE(parseCommandName("focus_stack").has_value());
-    CHECK(parseCommandName("focus_stack").value() == eCommand::FOCUS_STACK);
-    REQUIRE(parseCommandName("focus_breakpoints").has_value());
-    CHECK(parseCommandName("focus_breakpoints").value() == eCommand::FOCUS_BREAKPOINTS);
-    REQUIRE(parseCommandName("add_watch").has_value());
-    CHECK(parseCommandName("add_watch").value() == eCommand::ADD_WATCH);
-    REQUIRE(parseCommandName("edit_watch").has_value());
-    CHECK(parseCommandName("edit_watch").value() == eCommand::EDIT_WATCH);
-    REQUIRE(parseCommandName("remove_watch").has_value());
-    CHECK(parseCommandName("remove_watch").value() == eCommand::REMOVE_WATCH);
-    REQUIRE(parseCommandName("move_watch_up").has_value());
-    CHECK(parseCommandName("move_watch_up").value() == eCommand::MOVE_WATCH_UP);
-    REQUIRE(parseCommandName("move_watch_down").has_value());
-    CHECK(parseCommandName("move_watch_down").value() == eCommand::MOVE_WATCH_DOWN);
-    REQUIRE(parseCommandName("duplicate_watch").has_value());
-    CHECK(parseCommandName("duplicate_watch").value() == eCommand::DUPLICATE_WATCH);
-    REQUIRE(parseCommandName("add_breakpoint").has_value());
-    CHECK(parseCommandName("add_breakpoint").value() == eCommand::ADD_BREAKPOINT);
-    REQUIRE(parseCommandName("remove_breakpoint").has_value());
-    CHECK(parseCommandName("remove_breakpoint").value() == eCommand::REMOVE_BREAKPOINT);
-    REQUIRE(parseCommandName("toggle_breakpoint").has_value());
-    CHECK(parseCommandName("toggle_breakpoint").value() == eCommand::TOGGLE_BREAKPOINT);
-    REQUIRE(parseCommandName("set_memory_target").has_value());
-    CHECK(parseCommandName("set_memory_target").value() == eCommand::SET_MEMORY_TARGET);
-    REQUIRE(parseCommandName("continue_execution").has_value());
-    CHECK(parseCommandName("continue_execution").value() == eCommand::CONTINUE_EXECUTION);
-    REQUIRE(parseCommandName("step_over").has_value());
-    CHECK(parseCommandName("step_over").value() == eCommand::STEP_OVER);
-    REQUIRE(parseCommandName("step_into").has_value());
-    CHECK(parseCommandName("step_into").value() == eCommand::STEP_INTO);
-    REQUIRE(parseCommandName("step_out").has_value());
-    CHECK(parseCommandName("step_out").value() == eCommand::STEP_OUT);
-    REQUIRE(parseCommandName("pause_execution").has_value());
-    CHECK(parseCommandName("pause_execution").value() == eCommand::PAUSE_EXECUTION);
-    REQUIRE(parseCommandName("terminate_session").has_value());
-    CHECK(parseCommandName("terminate_session").value() == eCommand::TERMINATE_SESSION);
-    REQUIRE(parseCommandName("restart_session").has_value());
-    CHECK(parseCommandName("restart_session").value() == eCommand::RESTART_SESSION);
-    REQUIRE(parseCommandName("choose_profile").has_value());
-    CHECK(parseCommandName("choose_profile").value() == eCommand::CHOOSE_PROFILE);
-    REQUIRE(parseCommandName("cycle_theme").has_value());
-    CHECK(parseCommandName("cycle_theme").value() == eCommand::CYCLE_THEME);
-    REQUIRE(parseCommandName("reload_config").has_value());
-    CHECK(parseCommandName("reload_config").value() == eCommand::RELOAD_CONFIG);
+    CHECK(parseCommandName("focus_memory") == eCommand::FOCUS_MEMORY);
+    CHECK(parseCommandName("focus_threads") == eCommand::FOCUS_THREADS);
+    CHECK(parseCommandName("focus_stack") == eCommand::FOCUS_STACK);
+    CHECK(parseCommandName("focus_breakpoints") == eCommand::FOCUS_BREAKPOINTS);
+    CHECK(parseCommandName("add_watch") == eCommand::ADD_WATCH);
+    CHECK(parseCommandName("edit_watch") == eCommand::EDIT_WATCH);
+    CHECK(parseCommandName("remove_watch") == eCommand::REMOVE_WATCH);
+    CHECK(parseCommandName("move_watch_up") == eCommand::MOVE_WATCH_UP);
+    CHECK(parseCommandName("move_watch_down") == eCommand::MOVE_WATCH_DOWN);
+    CHECK(parseCommandName("duplicate_watch") == eCommand::DUPLICATE_WATCH);
+    CHECK(parseCommandName("add_breakpoint") == eCommand::ADD_BREAKPOINT);
+    CHECK(parseCommandName("remove_breakpoint") == eCommand::REMOVE_BREAKPOINT);
+    CHECK(parseCommandName("toggle_breakpoint") == eCommand::TOGGLE_BREAKPOINT);
+    CHECK(parseCommandName("set_memory_target") == eCommand::SET_MEMORY_TARGET);
+    CHECK(parseCommandName("continue_execution") == eCommand::CONTINUE_EXECUTION);
+    CHECK(parseCommandName("step_over") == eCommand::STEP_OVER);
+    CHECK(parseCommandName("step_into") == eCommand::STEP_INTO);
+    CHECK(parseCommandName("step_out") == eCommand::STEP_OUT);
+    CHECK(parseCommandName("pause_execution") == eCommand::PAUSE_EXECUTION);
+    CHECK(parseCommandName("terminate_session") == eCommand::TERMINATE_SESSION);
+    CHECK(parseCommandName("restart_session") == eCommand::RESTART_SESSION);
+    CHECK(parseCommandName("choose_profile") == eCommand::CHOOSE_PROFILE);
+    CHECK(parseCommandName("cycle_theme") == eCommand::CYCLE_THEME);
+    CHECK(parseCommandName("reload_config") == eCommand::RELOAD_CONFIG);
     CHECK_FALSE(parseCommandName("missing_command").has_value());
 }
 
@@ -144,17 +120,13 @@ TEST_CASE("handleVerticalNavigation ignores unrelated input") {
 }
 
 TEST_CASE("memoryNavigationDelta returns row and page movement for memory view") {
-    REQUIRE(memoryNavigationDelta(ftxui::Event::ArrowLeft, 8, 5).has_value());
-    CHECK(memoryNavigationDelta(ftxui::Event::ArrowLeft, 8, 5).value() == -8);
+    CHECK(memoryNavigationDelta(ftxui::Event::ArrowLeft, 8, 5) == -8);
 
-    REQUIRE(memoryNavigationDelta(ftxui::Event::Character('l'), 8, 5).has_value());
-    CHECK(memoryNavigationDelta(ftxui::Event::Character('l'), 8, 5).value() == 8);
+    CHECK(memoryNavigationDelta(ftxui::Event::Character('l'), 8, 5) == 8);
 
-    REQUIRE(memoryNavigationDelta(ftxui::Event::PageUp, 8, 5).has_value());
-    CHECK(memoryNavigationDelta(ftxui::Event::PageUp, 8, 5).value() == -40);
+    CHECK(memoryNavigationDelta(ftxui::Event::PageUp, 8, 5) == -40);
 
-    REQUIRE(memoryNavigationDelta(ftxui::Event::PageDown, 8, 5).has_value());
-    CHECK(memoryNavigationDelta(ftxui::Event::PageDown, 8, 5).value() == 40);
+    CHECK(memoryNavigationDelta(ftxui::Event::PageDown, 8, 5) == 40);
 
     CHECK_FALSE(memoryNavigationDelta(ftxui::Event::Tab, 8, 5).has_value());
 }

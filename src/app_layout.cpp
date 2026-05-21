@@ -424,9 +424,9 @@ namespace {
         Elements rows = {
             text(" ____                  _ _        _     _      ") | color(theme.accent),
             text("|  _ \\ ___  _   _ _ __(_) |_ __ _| |__ | | ___ ") | color(theme.accent),
-            text("| |_) / _ \\| | | | '__| | __/ _` | '_ \\| |/ _ \\") | color(theme.accent),
+            text(R"(| |_) / _ \| | | | '__| | __/ _` | '_ \| |/ _ \)") | color(theme.accent),
             text("|  _ < (_) | |_| | |  | | || (_| | |_) | |  __/") | color(theme.accent),
-            text("|_| \\_\\___/ \\__,_|_|  |_|\\__\\__,_|_.__/|_|\\___|") | color(theme.accent),
+            text(R"(|_| \_\___/ \__,_|_|  |_|\__\__,_|_.__/|_|\___|)") | color(theme.accent),
             separator(),
             text("Editor-agnostic debugging suite in your terminal") | color(theme.title),
             text("Launch standalone, from Neovim, or from VS Code") | color(theme.chrome),
@@ -577,10 +577,11 @@ namespace {
 } // namespace
 
 SPromptState beginPrompt(ePromptMode mode, std::string initial_input, bool replace_on_input) {
+    const auto cursor_index = initial_input.size();
     return {
         .mode             = mode,
         .input            = std::move(initial_input),
-        .cursor_index     = initial_input.size(),
+        .cursor_index     = cursor_index,
         .replace_on_input = replace_on_input,
     };
 }

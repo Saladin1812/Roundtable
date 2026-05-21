@@ -20,8 +20,7 @@ TEST_CASE("parseCliOptions reads launch program path") {
 
     const auto options = parseCliOptions(2, argv);
 
-    REQUIRE(options.launch_program.has_value());
-    CHECK(options.launch_program.value() == std::filesystem::path("/tmp/hello-world"));
+    CHECK(options.launch_program == std::filesystem::path("/tmp/hello-world"));
 }
 
 TEST_CASE("parseCliOptions reads explicit config path") {
@@ -69,8 +68,7 @@ TEST_CASE("parseCliOptions reads config path and launch program") {
     const auto options = parseCliOptions(3, argv);
 
     CHECK(options.config_path == std::filesystem::path("/tmp/roundtable-generated.toml"));
-    REQUIRE(options.launch_program.has_value());
-    CHECK(options.launch_program.value() == std::filesystem::path("/tmp/hello-world"));
+    CHECK(options.launch_program == std::filesystem::path("/tmp/hello-world"));
 }
 
 TEST_CASE("parseCliOptions reads profile") {
@@ -80,8 +78,7 @@ TEST_CASE("parseCliOptions reads profile") {
 
     const auto options = parseCliOptions(2, argv);
 
-    REQUIRE(options.profile.has_value());
-    CHECK(options.profile.value() == "tests");
+    CHECK(options.profile == "tests");
 }
 
 TEST_CASE("applyCliOverrides switches app config to dap_launch") {
