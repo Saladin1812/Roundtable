@@ -187,6 +187,7 @@ struct SDapEvaluateResponse {
     std::string result;
     std::string type;
     std::string memory_reference;
+    std::string output;
     std::string error_message;
 };
 
@@ -367,6 +368,7 @@ class CDapDebugSession : public IDebugSession {
     SDapEvaluateResponse                 evaluate(const SDapEvaluateRequest& evaluate_request);
     SDapDisassembleResponse              disassembleInstructions(const SDapDisassembleRequest& disassemble_request);
     SDapSetBreakpointsResponse           setBreakpoints(const SDapSetBreakpointsRequest& set_breakpoints_request);
+    std::optional<std::uint64_t>         resolveMemoryAddress(const SDebugSelection& selection, const std::string& expression) override;
     bool                                 isConnected() const;
     std::string                          getLastError() const;
     void                                 setAdapterCapabilities(const SDapAdapterCapabilities& adapter_capabilities);

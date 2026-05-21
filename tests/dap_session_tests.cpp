@@ -986,6 +986,37 @@ TEST_CASE("CDapDebugSession evaluates an expression from an evaluate response") 
     REQUIRE(evaluate_response.success);
     CHECK(evaluate_response.result == "42");
     CHECK(evaluate_response.type == "const int");
+    CHECK(evaluate_response.output == "hello");
+}
+
+TEST_CASE("CDapDebugSession resolves a variable address from delayed repl output") {
+    auto transport = std::make_unique<CStubDapTransport>(true);
+    transport->setReadMessages({
+        R"({"type":"response","command":"stackTrace","success":true,"body":{"stackFrames":[{"id":1001,"name":"main","line":12,"column":3,"source":{"path":"/tmp/sample.cpp"}}]}})",
+        R"({"type":"response","command":"evaluate","success":true,"body":{"result":"","variablesReference":0}})",
+        R"({"type":"event","event":"output","body":{"category":"console","output":"0x00007fffffffb92c: (const int) sample_value = 42\n"}})",
+        R"({"type":"response","command":"evaluate","success":true,"body":{"result":"","variablesReference":0}})",
+    });
+
+    CDapDebugSession dap_session(std::move(transport), {});
+    dap_session.setAdapterCapabilities({
+        .supports_read_memory      = false,
+        .supports_write_memory     = false,
+        .supports_evaluate         = true,
+        .supports_disassemble      = false,
+        .supports_data_breakpoints = false,
+    });
+
+    REQUIRE(dap_session.connect());
+    const auto address = dap_session.resolveMemoryAddress(
+        {
+            .thread_id   = 1,
+            .frame_index = 0,
+        },
+        "sample_value");
+
+    REQUIRE(address.has_value());
+    CHECK(address.value() == 0x7fffffffb92c);
 }
 
 TEST_CASE("CDapDebugSession resolves locals through stackTrace scopes and variables") {

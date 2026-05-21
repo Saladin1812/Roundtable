@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -75,6 +76,14 @@ namespace {
             }
 
             return results;
+        }
+
+        std::optional<std::uint64_t> resolveMemoryAddress(const SDebugSelection& selection, const std::string& expression) override {
+            static_cast<void>(selection);
+            if (expression == "sample_value") {
+                return 0x2000;
+            }
+            return std::nullopt;
         }
 
         std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) override {

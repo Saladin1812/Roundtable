@@ -2,6 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "memory_view.hpp"
 
@@ -53,6 +56,7 @@ class IDebugSession {
     virtual std::vector<SLocalVariable>          getLocals(const SDebugSelection& selection)                                                               = 0;
     virtual SMemoryReadResult                    readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request)                           = 0;
     virtual std::vector<SWatchResult>            evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) = 0;
+    virtual std::optional<std::uint64_t>         resolveMemoryAddress(const SDebugSelection& selection, const std::string& expression)                     = 0;
     virtual std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) = 0;
 };
 
@@ -62,5 +66,6 @@ class CMockDebugSession : public IDebugSession {
     std::vector<SLocalVariable>          getLocals(const SDebugSelection& selection) override;
     SMemoryReadResult                    readMemory(const SDebugSelection& selection, const SMemoryReadRequest& request) override;
     std::vector<SWatchResult>            evaluateWatches(const SDebugSelection& selection, const std::vector<SWatchExpression>& watch_expressions) override;
+    std::optional<std::uint64_t>         resolveMemoryAddress(const SDebugSelection& selection, const std::string& expression) override;
     std::vector<SDisassemblyInstruction> disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) override;
 };

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstring>
 #include <iostream>
 #include <arpa/inet.h>
@@ -25,6 +26,30 @@ namespace {
         }
 
         std::cerr << prefix << message << '\n';
+    }
+
+    std::optional<std::uint64_t> findFirstHexAddressInText(const std::string& text) {
+        std::size_t search_position = 0;
+
+        while (true) {
+            const auto address_start = text.find("0x", search_position);
+            if (address_start == std::string::npos) {
+                return std::nullopt;
+            }
+
+            const auto address_end = text.find_first_not_of("0123456789abcdefABCDEFx", address_start);
+            if (address_end > address_start + 2) {
+                std::uint64_t parsed_address = 0;
+                const auto    parse_begin    = text.data() + address_start + 2;
+                const auto    parse_end      = text.data() + (address_end == std::string::npos ? text.size() : address_end);
+                const auto    parse_result   = std::from_chars(parse_begin, parse_end, parsed_address, 16);
+                if (parse_result.ec == std::errc{} && parse_result.ptr == parse_end) {
+                    return parsed_address;
+                }
+            }
+
+            search_position = address_start + 2;
+        }
     }
 
     std::string jsonEscape(const std::string& value) {
@@ -1943,6 +1968,7 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
             .result           = "",
             .type             = "",
             .memory_reference = "",
+            .output           = "",
             .error_message    = "DAP session is not connected",
         };
     }
@@ -1953,11 +1979,13 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
             .result           = "",
             .type             = "",
             .memory_reference = "",
+            .output           = "",
             .error_message    = "DAP adapter does not support evaluate",
         };
     }
 
     std::string error_message;
+    std::string output;
     const auto  request_message = buildEvaluateRequestMessage(next_sequence_number_++, evaluate_request);
 
     if (!transport_->sendMessage(request_message, error_message)) {
@@ -1966,6 +1994,7 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
             .result           = "",
             .type             = "",
             .memory_reference = "",
+            .output           = "",
             .error_message    = error_message,
         };
     }
@@ -1978,6 +2007,7 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
                 .result           = "",
                 .type             = "",
                 .memory_reference = "",
+                .output           = "",
                 .error_message    = error_message,
             };
         }
@@ -1985,12 +2015,22 @@ SDapEvaluateResponse CDapDebugSession::evaluate(const SDapEvaluateRequest& evalu
         logDapMessage("dap evaluate message: ", response_message);
         const auto message = parseProtocolMessage(response_message);
 
+        if (message.type == "event" && message.event_name == "output") {
+            const auto output_text = extractJsonStringField(response_message, "output");
+            if (output_text.has_value()) {
+                output += output_text.value();
+            }
+            continue;
+        }
+
         if (message.type == "event") {
             continue;
         }
 
         if (message.type == "response" && (message.command_name == "evaluate" || message.command_name.empty())) {
-            return parseEvaluateResponseMessage(response_message);
+            auto response   = parseEvaluateResponseMessage(response_message);
+            response.output = std::move(output);
+            return response;
         }
     }
 }
@@ -2347,6 +2387,50 @@ std::vector<SWatchResult> CDapDebugSession::evaluateWatches(const SDebugSelectio
     }
 
     return watch_results;
+}
+
+std::optional<std::uint64_t> CDapDebugSession::resolveMemoryAddress(const SDebugSelection& selection, const std::string& expression) {
+    if (!isConnected() || expression.empty()) {
+        return std::nullopt;
+    }
+
+    const auto stack_trace_response = getStackTrace({
+        .thread_id   = static_cast<int>(selection.thread_id),
+        .start_frame = 0,
+        .levels      = selection.frame_index + 1,
+    });
+
+    if (!stack_trace_response.success || stack_trace_response.stack_frames.size() <= selection.frame_index) {
+        return std::nullopt;
+    }
+
+    const int  frame_id = stack_trace_response.stack_frames[selection.frame_index].id;
+    const auto response = evaluate({
+        .expression = "frame variable -L " + expression,
+        .frame_id   = frame_id,
+        .context    = "repl",
+    });
+
+    if (!response.success) {
+        return std::nullopt;
+    }
+
+    std::string address_text = response.output.empty() ? response.result : response.output;
+    if (const auto address = findFirstHexAddressInText(address_text); address.has_value()) {
+        return address;
+    }
+
+    const auto flush_response = evaluate({
+        .expression = "expression -- 0",
+        .frame_id   = frame_id,
+        .context    = "repl",
+    });
+    if (flush_response.success) {
+        address_text += flush_response.output;
+        address_text += flush_response.result;
+    }
+
+    return findFirstHexAddressInText(address_text);
 }
 
 std::vector<SDisassemblyInstruction> CDapDebugSession::disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) {

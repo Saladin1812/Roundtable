@@ -185,6 +185,19 @@ std::vector<SWatchResult> CMockDebugSession::evaluateWatches(const SDebugSelecti
     return watch_results;
 }
 
+std::optional<std::uint64_t> CMockDebugSession::resolveMemoryAddress(const SDebugSelection& selection, const std::string& expression) {
+    static_cast<void>(selection);
+
+    if (expression == "a" || expression == "sample_value") {
+        return INTEGER_MEMORY_BASE;
+    }
+    if (expression == "ptr") {
+        return POINTER_SLOT_MEMORY_BASE;
+    }
+
+    return std::nullopt;
+}
+
 std::vector<SDisassemblyInstruction> CMockDebugSession::disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) {
     static_cast<void>(selection);
 

@@ -89,18 +89,16 @@ void refreshPaneRows(const SPaneRefreshInputs& inputs, SPaneRefreshOutputs& outp
             const auto selected_local_index = std::min(outputs.locals_pane.selected_index, locals.size() - 1);
             outputs.memory_target_label     = compactMemoryTargetLabel("L", locals[selected_local_index].name);
         }
-        const auto memory_read_request   = buildMemoryReadRequest(inputs.debug_session, inputs.debug_selection, locals, outputs.locals_pane.selected_index,
-                                                                  inputs.disassembly_start_address, inputs.disassembly_memory_reference);
-        const auto synthetic_memory_rows = buildSyntheticMemoryRows(locals, outputs.locals_pane.selected_index, memory_read_request.bytes_per_row);
-        const bool using_synthetic_rows  = synthetic_memory_rows.has_value();
-        const auto selected_local_index  = locals.empty() ? 0UL : std::min(outputs.locals_pane.selected_index, locals.size() - 1);
-        const bool selected_local_has_explicit_memory_reference =
-            !locals.empty() && !locals[selected_local_index].memory_reference.empty() && findFirstHexAddress(locals[selected_local_index].memory_reference).has_value();
-        const auto memory_read_result = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request, inputs.memory_navigation_offset);
+        const auto memory_read_request               = buildMemoryReadRequest(inputs.debug_session, inputs.debug_selection, locals, outputs.locals_pane.selected_index,
+                                                                              inputs.disassembly_start_address, inputs.disassembly_memory_reference);
+        const auto synthetic_memory_rows             = buildSyntheticMemoryRows(locals, outputs.locals_pane.selected_index, memory_read_request.bytes_per_row);
+        const bool using_synthetic_rows              = synthetic_memory_rows.has_value();
+        const bool selected_local_has_memory_address = !memory_read_request.memory_reference.empty() && findFirstHexAddress(memory_read_request.memory_reference).has_value();
+        const auto memory_read_result                = readContextualMemory(inputs.debug_session, inputs.debug_selection, memory_read_request, inputs.memory_navigation_offset);
         outputs.memory_context.highlight =
-            buildMemoryByteHighlight(locals, outputs.locals_pane.selected_index, memory_read_request, using_synthetic_rows && !selected_local_has_explicit_memory_reference);
+            buildMemoryByteHighlight(locals, outputs.locals_pane.selected_index, memory_read_request, using_synthetic_rows && !selected_local_has_memory_address);
 
-        if (synthetic_memory_rows.has_value() && !selected_local_has_explicit_memory_reference) {
+        if (synthetic_memory_rows.has_value() && !selected_local_has_memory_address) {
             outputs.memory_view_pane.rows = synthetic_memory_rows.value();
         } else if (!memory_read_result.error_message.empty() && synthetic_memory_rows.has_value()) {
             outputs.memory_view_pane.rows = synthetic_memory_rows.value();

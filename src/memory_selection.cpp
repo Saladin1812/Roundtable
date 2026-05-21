@@ -79,6 +79,12 @@ namespace {
         return rows;
     }
 
+    std::string formatHexAddress(std::uint64_t address) {
+        std::ostringstream stream;
+        stream << "0x" << std::uppercase << std::hex << address;
+        return stream.str();
+    }
+
     template <typename TItem>
     std::optional<std::size_t> inferScalarByteCount(const TItem& item) {
         if (item.type == "int" || item.type == "const int") {
@@ -245,6 +251,11 @@ SMemoryReadRequest buildMemoryReadRequest(IDebugSession& debug_session, const SD
             if (const auto pointer_address = findFirstHexAddress(selected_local.value); pointer_address.has_value()) {
                 start_address = pointer_address.value();
                 memory_reference.clear();
+            }
+        } else if (memory_reference.empty()) {
+            if (const auto resolved_address = debug_session.resolveMemoryAddress(debug_selection, selected_local.name); resolved_address.has_value()) {
+                start_address    = resolved_address.value();
+                memory_reference = formatHexAddress(resolved_address.value());
             }
         }
 

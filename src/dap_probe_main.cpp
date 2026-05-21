@@ -181,6 +181,7 @@ int main(int argc, char** argv) {
                 std::cout << "address watch expression=" << address_watch_result.expression << " value=" << address_watch_result.value << " type=" << address_watch_result.type
                           << " memory_reference=" << address_watch_result.memory_reference << " error=" << address_watch_result.error_message << '\n';
             }
+
             std::size_t selected_local_index = 0;
             for (std::size_t local_index = 0; local_index < locals.size(); ++local_index) {
                 if (locals[local_index].name == "sample_value") {
@@ -204,7 +205,7 @@ int main(int argc, char** argv) {
                 memory_read_request);
 
             std::cout << "memory address=0x" << std::hex << std::uppercase << memory_read_request.start_address << std::dec << '\n';
-            if (synthetic_memory_rows.has_value()) {
+            if (memory_read_request.memory_reference.empty() && synthetic_memory_rows.has_value()) {
                 for (const auto& row : synthetic_memory_rows.value()) {
                     std::cout << "synthetic memory row=" << row << '\n';
                 }
