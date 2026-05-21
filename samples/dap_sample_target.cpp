@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <thread>
 
-int increment(int value) {
+static int increment(int value) {
     return value + 1;
 }
 
