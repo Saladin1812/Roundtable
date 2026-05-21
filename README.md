@@ -21,16 +21,16 @@ Requirements:
 - `curl` or `wget`
 - CodeLLDB for real debug sessions
 
-Install the latest release:
+Install the current alpha release:
+
+```bash
+curl -sS https://raw.githubusercontent.com/Saladin1812/Roundtable/main/install.sh | sh -s -- --version v0.1.0-alpha.1
+```
+
+Install the latest stable release, once stable releases are available:
 
 ```bash
 curl -sS https://raw.githubusercontent.com/Saladin1812/Roundtable/main/install.sh | sh
-```
-
-Install a specific release:
-
-```bash
-curl -sS https://raw.githubusercontent.com/Saladin1812/Roundtable/main/install.sh | sh -s -- --version v0.1.0-alpha
 ```
 
 ## Build From Source
