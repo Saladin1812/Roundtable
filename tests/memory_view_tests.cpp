@@ -236,7 +236,7 @@ TEST_CASE("buildSyntheticMemoryRows formats bytes from an array-like local value
     CHECK(rows->at(0) == "<value>  48 65 6C 6C 6F 21 00 41  Hello!.A");
 }
 
-TEST_CASE("buildSyntheticMemoryRows returns no rows for non-array locals") {
+TEST_CASE("buildSyntheticMemoryRows formats scalar integer values when no memory address is available") {
     const std::vector<SLocalVariable> locals = {
         {
             .name                = "sample_value",
@@ -247,7 +247,11 @@ TEST_CASE("buildSyntheticMemoryRows returns no rows for non-array locals") {
         },
     };
 
-    CHECK_FALSE(buildSyntheticMemoryRows(locals, 0).has_value());
+    const auto rows = buildSyntheticMemoryRows(locals, 0);
+
+    REQUIRE(rows.has_value());
+    REQUIRE(rows->size() == 1);
+    CHECK(rows->at(0) == "<value>  2A 00 00 00  *...");
 }
 
 TEST_CASE("buildMemoryByteHighlight uses integer width for selected int local") {
@@ -325,6 +329,31 @@ TEST_CASE("buildMemoryByteHighlight uses parsed byte count for synthetic array r
     REQUIRE(highlight.has_value());
     CHECK(highlight->synthetic);
     CHECK(highlight->byte_count == 8);
+}
+
+TEST_CASE("buildMemoryByteHighlight uses scalar byte count for synthetic integer rows") {
+    const std::vector<SLocalVariable> locals = {
+        {
+            .name                = "sample_value",
+            .value               = "42",
+            .type                = "const int",
+            .memory_reference    = "",
+            .variables_reference = 0,
+        },
+    };
+
+    const auto highlight = buildMemoryByteHighlight(locals, 0,
+                                                    {
+                                                        .start_address    = 0x0,
+                                                        .memory_reference = "",
+                                                        .byte_count       = 4,
+                                                        .bytes_per_row    = 8,
+                                                    },
+                                                    true);
+
+    REQUIRE(highlight.has_value());
+    CHECK(highlight->synthetic);
+    CHECK(highlight->byte_count == 4);
 }
 
 TEST_CASE("buildContextualMemoryReadRequest shifts address backward by whole rows") {

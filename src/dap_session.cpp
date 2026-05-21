@@ -19,10 +19,8 @@
 
 namespace {
 
-    constexpr bool kEnableDapLogging = false;
-
-    void           logDapMessage(const char* prefix, const std::string& message) {
-        if (!kEnableDapLogging) {
+    void logDapMessage(const char* prefix, const std::string& message) {
+        if (std::getenv("ROUNDTABLE_DAP_LOG") == nullptr) {
             return;
         }
 

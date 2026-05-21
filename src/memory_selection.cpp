@@ -80,26 +80,6 @@ namespace {
     }
 
     template <typename TItem>
-    std::optional<std::vector<std::string>> buildSyntheticMemoryRowsFromItems(const std::vector<TItem>& items, std::size_t selected_index, std::size_t bytes_per_row) {
-        if (items.empty()) {
-            return std::nullopt;
-        }
-
-        const auto& selected_item = items[std::min(selected_index, items.size() - 1)];
-        const bool  is_array_like = selected_item.type.find("array") != std::string::npos || selected_item.value.find('{') != std::string::npos;
-        if (!is_array_like) {
-            return std::nullopt;
-        }
-
-        const auto parsed_bytes = parseQuotedBytes(selected_item.value);
-        if (!parsed_bytes.has_value()) {
-            return std::nullopt;
-        }
-
-        return formatSyntheticMemoryRows(parsed_bytes.value(), bytes_per_row);
-    }
-
-    template <typename TItem>
     std::optional<std::size_t> inferScalarByteCount(const TItem& item) {
         if (item.type == "int" || item.type == "const int") {
             return 4;
@@ -115,6 +95,58 @@ namespace {
     }
 
     template <typename TItem>
+    std::optional<std::vector<std::uint8_t>> parseScalarBytes(const TItem& item) {
+        if (item.type.find('*') != std::string::npos) {
+            return std::nullopt;
+        }
+
+        const auto byte_count = inferScalarByteCount(item);
+        if (!byte_count.has_value()) {
+            return std::nullopt;
+        }
+
+        std::uint64_t parsed_value = 0;
+        const auto*   value_begin  = item.value.data();
+        const auto*   value_end    = item.value.data() + item.value.size();
+        const int     base         = item.value.starts_with("0x") || item.value.starts_with("0X") ? 16 : 10;
+        const auto    parse_result = std::from_chars(value_begin + (base == 16 ? 2 : 0), value_end, parsed_value, base);
+        if (parse_result.ec != std::errc{} || parse_result.ptr != value_end) {
+            return std::nullopt;
+        }
+
+        std::vector<std::uint8_t> bytes;
+        bytes.reserve(byte_count.value());
+        for (std::size_t index = 0; index < byte_count.value(); ++index) {
+            bytes.push_back(static_cast<std::uint8_t>((parsed_value >> (index * 8)) & 0xFFU));
+        }
+
+        return bytes;
+    }
+
+    template <typename TItem>
+    std::optional<std::vector<std::string>> buildSyntheticMemoryRowsFromItems(const std::vector<TItem>& items, std::size_t selected_index, std::size_t bytes_per_row) {
+        if (items.empty()) {
+            return std::nullopt;
+        }
+
+        const auto& selected_item = items[std::min(selected_index, items.size() - 1)];
+        const bool  is_array_like = selected_item.type.find("array") != std::string::npos || selected_item.value.find('{') != std::string::npos;
+        if (is_array_like) {
+            const auto parsed_bytes = parseQuotedBytes(selected_item.value);
+            if (parsed_bytes.has_value()) {
+                return formatSyntheticMemoryRows(parsed_bytes.value(), bytes_per_row);
+            }
+        }
+
+        const auto scalar_bytes = parseScalarBytes(selected_item);
+        if (scalar_bytes.has_value()) {
+            return formatSyntheticMemoryRows(scalar_bytes.value(), bytes_per_row);
+        }
+
+        return std::nullopt;
+    }
+
+    template <typename TItem>
     std::optional<SMemoryByteHighlight> buildMemoryByteHighlightFromItems(const std::vector<TItem>& items, std::size_t selected_index,
                                                                           const SMemoryReadRequest& memory_read_request, bool use_synthetic_rows) {
         if (items.empty()) {
@@ -124,7 +156,10 @@ namespace {
         const auto& selected_item = items[std::min(selected_index, items.size() - 1)];
 
         if (use_synthetic_rows) {
-            const auto parsed_bytes = parseQuotedBytes(selected_item.value);
+            auto parsed_bytes = parseQuotedBytes(selected_item.value);
+            if (!parsed_bytes.has_value()) {
+                parsed_bytes = parseScalarBytes(selected_item);
+            }
             if (!parsed_bytes.has_value()) {
                 return std::nullopt;
             }

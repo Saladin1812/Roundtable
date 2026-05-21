@@ -1,5 +1,6 @@
 #include <iostream>
 #include <memory>
+#include <filesystem>
 #include <functional>
 #include <string_view>
 
@@ -50,6 +51,19 @@ int main(int argc, char** argv) {
                 .stop_on_entry     = true,
             })) {
             std::cerr << "launch failed: " << dap_session.getLastError() << '\n';
+            return 4;
+        }
+
+        const auto sample_source_path  = std::filesystem::absolute("samples/dap_sample_target.cpp").string();
+        const auto breakpoint_response = dap_session.setBreakpoints({
+            .source_path = sample_source_path,
+            .breakpoints =
+                {
+                    {.line = 15},
+                },
+        });
+        if (!breakpoint_response.success || breakpoint_response.breakpoints.empty() || !breakpoint_response.breakpoints.front().verified) {
+            std::cerr << "setBreakpoints failed: " << breakpoint_response.error_message << '\n';
             return 4;
         }
     } else if (mode == "attach") {
@@ -125,7 +139,8 @@ int main(int argc, char** argv) {
 
         std::cout << "locals_count=" << locals.size() << '\n';
         for (const auto& local : locals) {
-            std::cout << "local name=" << local.name << " value=" << local.value << " type=" << local.type << '\n';
+            std::cout << "local name=" << local.name << " value=" << local.value << " type=" << local.type << " memory_reference=" << local.memory_reference
+                      << " variables_reference=" << local.variables_reference << '\n';
         }
 
         const bool should_continue_to_user_frame =
@@ -160,25 +175,40 @@ int main(int argc, char** argv) {
                     {.expression = "&sample_bytes._M_elems[0]"},
                     {.expression = "&sample_bytes[0]"},
                     {.expression = "&sample_bytes"},
+                    {.expression = "&sample_value"},
                 });
             for (const auto& address_watch_result : address_watch_results) {
                 std::cout << "address watch expression=" << address_watch_result.expression << " value=" << address_watch_result.value << " type=" << address_watch_result.type
                           << " memory_reference=" << address_watch_result.memory_reference << " error=" << address_watch_result.error_message << '\n';
             }
-            const auto memory_read_request = buildMemoryReadRequest(dap_session,
-                                                                    {
-                                                                        .thread_id   = threads_response.threads.front().id,
-                                                                        .frame_index = selected_frame_index,
+            std::size_t selected_local_index = 0;
+            for (std::size_t local_index = 0; local_index < locals.size(); ++local_index) {
+                if (locals[local_index].name == "sample_value") {
+                    selected_local_index = local_index;
+                    break;
+                }
+            }
+
+            const auto memory_read_request   = buildMemoryReadRequest(dap_session,
+                                                                      {
+                                                                          .thread_id   = threads_response.threads.front().id,
+                                                                          .frame_index = selected_frame_index,
                                                                     },
-                                                                    locals, 0, 0x1000);
-            const auto memory_read_result  = dap_session.readMemory(
+                                                                      locals, selected_local_index, 0x1000);
+            const auto synthetic_memory_rows = buildSyntheticMemoryRows(locals, selected_local_index, memory_read_request.bytes_per_row);
+            const auto memory_read_result    = dap_session.readMemory(
                 {
-                     .thread_id   = threads_response.threads.front().id,
-                     .frame_index = selected_frame_index,
+                       .thread_id   = threads_response.threads.front().id,
+                       .frame_index = selected_frame_index,
                 },
                 memory_read_request);
 
             std::cout << "memory address=0x" << std::hex << std::uppercase << memory_read_request.start_address << std::dec << '\n';
+            if (synthetic_memory_rows.has_value()) {
+                for (const auto& row : synthetic_memory_rows.value()) {
+                    std::cout << "synthetic memory row=" << row << '\n';
+                }
+            }
             std::cout << "memory error=" << memory_read_result.error_message << '\n';
             const auto memory_rows = generateMemoryViewRows(memory_read_result);
             std::cout << "memory row count=" << memory_rows.size() << '\n';
@@ -213,6 +243,45 @@ int main(int argc, char** argv) {
     const int query_result = query_stopped_state(6);
     if (query_result != 0) {
         return query_result;
+    }
+
+    const auto smoke_control_request = [&](std::string_view name, auto send_request, int result_base_code) -> int {
+        const auto threads_response = dap_session.getThreads();
+        if (!threads_response.success || threads_response.threads.empty()) {
+            std::cerr << name << " failed: no active thread\n";
+            return result_base_code;
+        }
+
+        std::cerr << "probe: " << name << '\n';
+        if (!send_request(threads_response.threads.front().id)) {
+            std::cerr << name << " request failed: " << dap_session.getLastError() << '\n';
+            return result_base_code + 1;
+        }
+
+        if (!dap_session.waitForStoppedEvent()) {
+            std::cerr << name << " waitForStoppedEvent failed: " << dap_session.getLastError() << '\n';
+            return result_base_code + 2;
+        }
+
+        std::cout << name << " ok\n";
+        return query_stopped_state(result_base_code + 3);
+    };
+
+    if (mode == "launch") {
+        int step_result = smoke_control_request("stepInto", [&](int thread_id) { return dap_session.sendStepIntoRequest({.thread_id = thread_id}); }, 20);
+        if (step_result != 0) {
+            return step_result;
+        }
+
+        step_result = smoke_control_request("stepOut", [&](int thread_id) { return dap_session.sendStepOutRequest({.thread_id = thread_id}); }, 30);
+        if (step_result != 0) {
+            return step_result;
+        }
+
+        step_result = smoke_control_request("stepOver", [&](int thread_id) { return dap_session.sendStepOverRequest({.thread_id = thread_id}); }, 40);
+        if (step_result != 0) {
+            return step_result;
+        }
     }
 
     const auto capabilities = dap_session.getCapabilities();
