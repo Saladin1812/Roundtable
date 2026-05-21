@@ -12,6 +12,8 @@ compile_commands.json
 # Common out-of-source build directories
 /out/
 /build/
+/build-release/
+/dist/
 /bin/
 /lib/
 /cmake-build-*/
