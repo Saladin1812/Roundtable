@@ -24,7 +24,7 @@ Requirements:
 Install the current alpha release:
 
 ```bash
-curl -sS https://raw.githubusercontent.com/Saladin1812/Roundtable/main/install.sh | sh -s -- --version v0.1.0-alpha.1
+curl -sS https://raw.githubusercontent.com/Saladin1812/Roundtable/main/install.sh | sh -s -- --version v0.1.0-alpha.2
 ```
 
 Install the latest stable release, once stable releases are available:
