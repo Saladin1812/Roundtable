@@ -535,7 +535,7 @@ int main(int argc, char** argv) {
         const auto absolute_program_path        = std::filesystem::absolute(program_path);
         app_config.session_mode                 = eSessionMode::DAP_LAUNCH;
         app_config.dap_launch.program           = absolute_program_path.string();
-        app_config.dap_launch.continue_once     = true;
+        app_config.dap_launch.continue_once     = false;
         app_config.dap_launch.working_directory = absolute_program_path.has_parent_path() ? absolute_program_path.parent_path().string() : std::filesystem::current_path().string();
         dashboard_active                        = false;
         watch_expressions                       = buildInitialWatchExpressions(app_config);

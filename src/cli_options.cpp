@@ -88,6 +88,6 @@ void applyCliOverrides(const SCliOptions& cli_options, SAppConfig& app_config) {
 
     app_config.session_mode                 = eSessionMode::DAP_LAUNCH;
     app_config.dap_launch.program           = program_path.string();
-    app_config.dap_launch.continue_once     = true;
+    app_config.dap_launch.continue_once     = false;
     app_config.dap_launch.working_directory = program_path.has_parent_path() ? program_path.parent_path().string() : std::filesystem::current_path().string();
 }

@@ -99,7 +99,7 @@ TEST_CASE("applyCliOverrides switches app config to dap_launch") {
 
     CHECK(app_config.session_mode == eSessionMode::DAP_LAUNCH);
     CHECK(app_config.dap_launch.program == std::filesystem::path("/tmp/hello-world").string());
-    CHECK(app_config.dap_launch.continue_once);
+    CHECK_FALSE(app_config.dap_launch.continue_once);
     CHECK(app_config.dap_launch.working_directory == std::filesystem::path("/tmp").string());
 }
 

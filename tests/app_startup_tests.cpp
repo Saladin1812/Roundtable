@@ -76,7 +76,7 @@ TEST_CASE("initializeAppStartup loads config and applies program override") {
     CHECK(result.app_config.theme_preset == eThemePreset::FOREST);
     CHECK(result.app_config.session_mode == eSessionMode::DAP_LAUNCH);
     CHECK(result.app_config.dap_launch.program == std::filesystem::absolute(program_path).string());
-    CHECK(result.app_config.dap_launch.continue_once);
+    CHECK_FALSE(result.app_config.dap_launch.continue_once);
 
     std::filesystem::remove(config_path);
 }
