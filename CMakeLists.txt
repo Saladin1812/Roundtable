@@ -123,6 +123,7 @@ if(BUILD_TESTING)
     tests/debugger_controller_tests.cpp
     tests/debug_session_tests.cpp
     tests/pane_rows_tests.cpp
+    tests/pane_refresh_tests.cpp
     tests/pane_state_tests.cpp
     tests/session_status_tests.cpp
     tests/memory_view_tests.cpp
@@ -137,6 +138,7 @@ if(BUILD_TESTING)
     src/debug_session.cpp
     src/memory_selection.cpp
     src/memory_view.cpp
+    src/pane_refresh.cpp
     src/pane_rows.cpp
     src/pane_state.cpp
     src/session_status.cpp

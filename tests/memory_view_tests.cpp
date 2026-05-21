@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "app_layout.hpp"
 #include "debug_session.hpp"
 #include "memory_selection.hpp"
 #include "memory_view.hpp"
@@ -191,7 +192,7 @@ TEST_CASE("buildMemoryReadRequest uses evaluated address for a selected non-poin
     const SDebugSelection             debug_selection = {};
     const std::vector<SLocalVariable> locals          = debug_session.getLocals(debug_selection);
 
-    const SMemoryReadRequest          memory_read_request = buildMemoryReadRequest(debug_session, debug_selection, locals, 0, 0x1000);
+    const SMemoryReadRequest          memory_read_request = buildMemoryReadRequest(debug_session, debug_selection, locals, 0, 0x1000, "0x401000");
 
     CHECK(memory_read_request.start_address == 0x2000);
     CHECK(memory_read_request.memory_reference == "0x2000");
@@ -287,6 +288,23 @@ TEST_CASE("buildMemoryByteHighlight uses integer width for selected int local") 
     CHECK_FALSE(highlight->synthetic);
     CHECK(highlight->start_address == 0x2000);
     CHECK(highlight->byte_count == 4);
+}
+
+TEST_CASE("memory highlight tracks exact variable bytes inside contextual row") {
+    const SMemoryByteHighlight highlight = {
+        .start_address = 0x2001,
+        .start_offset  = 0,
+        .byte_count    = 4,
+        .row_stride    = 8,
+        .synthetic     = false,
+    };
+
+    CHECK_FALSE(isHighlightedMemoryByte(highlight, 0x2000, 0, 0));
+    CHECK(isHighlightedMemoryByte(highlight, 0x2000, 0, 1));
+    CHECK(isHighlightedMemoryByte(highlight, 0x2000, 0, 2));
+    CHECK(isHighlightedMemoryByte(highlight, 0x2000, 0, 3));
+    CHECK(isHighlightedMemoryByte(highlight, 0x2000, 0, 4));
+    CHECK_FALSE(isHighlightedMemoryByte(highlight, 0x2000, 0, 5));
 }
 
 TEST_CASE("buildMemoryByteHighlight uses one byte for selected char pointer targets") {

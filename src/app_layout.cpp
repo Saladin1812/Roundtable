@@ -170,20 +170,6 @@ namespace {
         return tokens;
     }
 
-    bool isHighlightedMemoryByte(const SMemoryByteHighlight& highlight, std::uint64_t row_address, std::size_t row_index, std::size_t byte_index) {
-        if (highlight.byte_count == 0) {
-            return false;
-        }
-
-        if (highlight.synthetic) {
-            const std::size_t absolute_offset = (row_index * highlight.row_stride) + byte_index;
-            return absolute_offset >= highlight.start_offset && absolute_offset < highlight.start_offset + highlight.byte_count;
-        }
-
-        const std::uint64_t absolute_address = row_address + static_cast<std::uint64_t>(byte_index);
-        return absolute_address >= highlight.start_address && absolute_address < highlight.start_address + highlight.byte_count;
-    }
-
     ftxui::Element renderMemoryRow(const std::string& row, std::size_t row_index, bool is_selected, const SAppTheme& theme, const SMemoryRenderContext& memory_context) {
         using namespace ftxui;
 
@@ -575,6 +561,20 @@ namespace {
     }
 
 } // namespace
+
+bool isHighlightedMemoryByte(const SMemoryByteHighlight& highlight, std::uint64_t row_address, std::size_t row_index, std::size_t byte_index) {
+    if (highlight.byte_count == 0) {
+        return false;
+    }
+
+    if (highlight.synthetic) {
+        const std::size_t absolute_offset = (row_index * highlight.row_stride) + byte_index;
+        return absolute_offset >= highlight.start_offset && absolute_offset < highlight.start_offset + highlight.byte_count;
+    }
+
+    const std::uint64_t absolute_address = row_address + static_cast<std::uint64_t>(byte_index);
+    return absolute_address >= highlight.start_address && absolute_address < highlight.start_address + highlight.byte_count;
+}
 
 SPromptState beginPrompt(ePromptMode mode, std::string initial_input, bool replace_on_input) {
     const auto cursor_index = initial_input.size();

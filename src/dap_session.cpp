@@ -52,6 +52,28 @@ namespace {
         }
     }
 
+    std::optional<std::uint64_t> findHexAddressOnLineContaining(const std::string& text, const std::string& needle) {
+        std::size_t line_start = 0;
+
+        while (line_start < text.size()) {
+            const auto        line_end = text.find('\n', line_start);
+            const std::string line     = text.substr(line_start, line_end == std::string::npos ? std::string::npos : line_end - line_start);
+
+            if (line.find(needle) != std::string::npos) {
+                if (const auto address = findFirstHexAddressInText(line); address.has_value()) {
+                    return address;
+                }
+            }
+
+            if (line_end == std::string::npos) {
+                break;
+            }
+            line_start = line_end + 1;
+        }
+
+        return std::nullopt;
+    }
+
     std::string jsonEscape(const std::string& value) {
         std::string escaped_value;
         escaped_value.reserve(value.size());
@@ -2416,7 +2438,7 @@ std::optional<std::uint64_t> CDapDebugSession::resolveMemoryAddress(const SDebug
     }
 
     std::string address_text = response.output.empty() ? response.result : response.output;
-    if (const auto address = findFirstHexAddressInText(address_text); address.has_value()) {
+    if (const auto address = findHexAddressOnLineContaining(address_text, expression); address.has_value()) {
         return address;
     }
 
@@ -2430,7 +2452,11 @@ std::optional<std::uint64_t> CDapDebugSession::resolveMemoryAddress(const SDebug
         address_text += flush_response.result;
     }
 
-    return findFirstHexAddressInText(address_text);
+    if (const auto address = findHexAddressOnLineContaining(address_text, expression); address.has_value()) {
+        return address;
+    }
+
+    return std::nullopt;
 }
 
 std::vector<SDisassemblyInstruction> CDapDebugSession::disassemble(const SDebugSelection& selection, std::uint64_t start_address, std::size_t instruction_count) {

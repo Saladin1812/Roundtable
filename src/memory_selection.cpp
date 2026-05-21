@@ -239,6 +239,7 @@ SMemoryReadRequest buildMemoryReadRequest(IDebugSession& debug_session, const SD
     std::string   memory_reference = fallback_memory_reference;
 
     if (!locals.empty()) {
+        memory_reference.clear();
         const auto& selected_local  = locals[std::min(selected_local_index, locals.size() - 1)];
         const bool  is_pointer_like = selected_local.type.find('*') != std::string::npos;
 
@@ -328,6 +329,7 @@ SMemoryReadRequest buildMemoryReadRequest(const std::vector<SWatchResult>& watch
     std::string   memory_reference = fallback_memory_reference;
 
     if (!watch_results.empty()) {
+        memory_reference.clear();
         const auto& selected_watch  = watch_results[std::min(selected_watch_index, watch_results.size() - 1)];
         const bool  is_pointer_like = selected_watch.type.find('*') != std::string::npos;
 

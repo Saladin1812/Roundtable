@@ -86,4 +86,5 @@ SPromptState   beginPrompt(ePromptMode mode, std::string initial_input = "", boo
 std::string    buildPromptDisplay(const SPromptState& prompt_state);
 std::string    themePresetName(eThemePreset preset);
 std::size_t    themePresetIndex(eThemePreset preset);
+bool           isHighlightedMemoryByte(const SMemoryByteHighlight& highlight, std::uint64_t row_address, std::size_t row_index, std::size_t byte_index);
 ftxui::Element renderRoundtableLayout(const SAppLayoutState& state);
