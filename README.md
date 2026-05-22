@@ -1,4 +1,10 @@
-# Roundtable
+<h1 align="center">Roundtable</h1>
+
+  <p align="center">
+    <img src="https://cdn.saladin.pro/roundtable_dashboard.png" alt="Roundtable dashboard" width="48%">
+    <img src="https://cdn.saladin.pro/roundtable_alpha2.png" alt="Roundtable debug session" width="48%">
+  </p>
+
 
 Editor-agnostic debugging suite in your terminal with reusable debug profiles.
 
