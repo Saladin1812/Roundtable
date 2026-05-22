@@ -14,6 +14,15 @@ Roundtable is a terminal debugger UI built around the Debug Adapter Protocol. Th
 - Neovim integration through [`roundtable.nvim`](https://github.com/Saladin1812/roundtable.nvim).
 - Mock mode for contributors and UI smoke testing without a debugger session.
 
+## Before Stable
+
+Roundtable is still early alpha. The main pre-stable work is:
+
+- [ ] VS Code extension support.
+- [ ] A seamless way to save the currently running debug configuration as a reusable profile.
+- [ ] Easier breakpoint setup in standalone mode.
+- [ ] More bug fixes, polish, and real-world testing.
+
 ## Install
 
 Requirements:
